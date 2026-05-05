@@ -11,6 +11,10 @@ This implementation currently includes:
 - OAuth protected-resource discovery metadata builder
 - Scope parsing for `vault:read`, `vault:write`, `vault:capture`, `daily:append`, and `admin`
 - Typed tool registry with scope-filtered listing
+- Safe vault path normalization and traversal protection
+- Markdown/frontmatter parsing with tags, aliases, source IDs, and wikilink extraction
+- Local vault reader for note reads, SHA-256 hashes, and folder listing
+- Rebuildable SQLite FTS index for search, backlinks, outgoing links, source ID lookup, and conflict listing
 - Minimal HTTP server routes:
   - `GET /healthz`
   - `GET /.well-known/oauth-protected-resource`
