@@ -23,9 +23,11 @@ describe("tool registry", () => {
 
     expect(names).toContain("read_note");
     expect(names).toContain("search");
+    expect(names).toContain("find_maps");
     expect(names).toContain("daily_note_append");
+    expect(names).not.toContain("find_mocs");
     expect(names).not.toContain("create_note");
-    expect(names).not.toContain("schema_reload");
+    expect(names).not.toContain("framework_reload");
   });
 
   test("returns write tools for vault write scope", () => {
@@ -33,7 +35,8 @@ describe("tool registry", () => {
 
     expect(names).toContain("create_note");
     expect(names).toContain("replace_note");
-    expect(names).toContain("create_lyt_record");
+    expect(names).toContain("create_record");
+    expect(names).not.toContain("create_lyt_record");
     expect(names).not.toContain("daily_note_append");
   });
 

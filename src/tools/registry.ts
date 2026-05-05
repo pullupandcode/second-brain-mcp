@@ -23,17 +23,17 @@ const BASE_TOOLS = [
   tool("daily_note_get", "vault:read", "Read a daily note."),
   tool("daily_note_append", "daily:append", "Append inside a writable daily note marker."),
   tool("daily_note_repair_markers", "admin", "Repair missing daily note markers."),
-  tool("create_lyt_record", "vault:write", "Create a type-driven LYT record."),
-  tool("find_mocs", "vault:read", "Find maps of content."),
-  tool("list_lyt_types", "vault:read", "List effective LYT schema types."),
-  tool("get_vault_structure", "vault:read", "Return folder map and LYT type list."),
+  tool("create_record", "vault:write", "Create a type-driven framework record."),
+  tool("find_maps", "vault:read", "Find framework map or index notes."),
+  tool("list_record_types", "vault:read", "List effective framework record types."),
+  tool("get_vault_structure", "vault:read", "Return folder map and framework type list."),
   tool("link_to_page", "vault:read", "Return a stable OCR page wikilink."),
-  tool("schema_init", "admin", "Create a starter schema."),
-  tool("schema_reload", "admin", "Reload schema files."),
-  tool("schema_register", "admin", "Register a schema overlay."),
-  tool("schema_unregister", "admin", "Unregister a schema overlay."),
-  tool("schema_list", "admin", "List registered schemas."),
-  tool("schema_compose", "admin", "Return the effective schema.")
+  tool("framework_init", "admin", "Create a starter framework schema."),
+  tool("framework_reload", "admin", "Reload framework schema files."),
+  tool("framework_register", "admin", "Register a framework overlay."),
+  tool("framework_unregister", "admin", "Unregister a framework overlay."),
+  tool("framework_list", "admin", "List registered framework schemas."),
+  tool("framework_compose", "admin", "Return the effective framework schema.")
 ] satisfies ToolDefinition[];
 
 const OCR_TOOLS = [
