@@ -1,2 +1,4 @@
 .worktrees/
 docs/superpowers/
+node_modules/
+dist/

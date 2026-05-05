@@ -1,0 +1,10 @@
+export { buildProtectedResourceMetadata } from "./auth/discovery.js";
+export { KNOWN_SCOPES, parseScopes } from "./auth/scopes.js";
+export { loadConfig, parseConfig } from "./config.js";
+export { createHttpServer } from "./server.js";
+export { createToolRegistry, listToolsForScopes } from "./tools/registry.js";
+export type { OAuthProtectedResourceMetadata } from "./auth/discovery.js";
+export type { Scope } from "./auth/scopes.js";
+export type { ServerConfig } from "./config.js";
+export type { CreateServerOptions } from "./server.js";
+export type { ToolDefinition } from "./tools/registry.js";
