@@ -12,6 +12,7 @@ This implementation currently includes:
 - Scope parsing for `vault:read`, `vault:write`, `vault:capture`, `daily:append`, and `admin`
 - Typed tool registry with scope-filtered listing
 - Framework-neutral record tool names and built-in presets for LYT, PARA, and Zettel
+- Framework schema parsing/composition, including `framework: custom` for non-preset systems
 - Safe vault path normalization and traversal protection
 - Markdown/frontmatter parsing with tags, aliases, source IDs, and wikilink extraction
 - Local vault reader for note reads, SHA-256 hashes, and folder listing
