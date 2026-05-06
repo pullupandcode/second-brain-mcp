@@ -17,6 +17,7 @@ This implementation currently includes:
 - Markdown/frontmatter parsing with tags, aliases, source IDs, and wikilink extraction
 - Local vault reader for note reads, SHA-256 hashes, and folder listing
 - Vault writer foundation for atomic creates/replaces, `base_sha256` checks, cooldown conflicts, frontmatter patching, and marker-scoped replacement
+- Primitive write tool adapter with append-only SQLite write audit rows for successful writes
 - Rebuildable SQLite FTS index for search, backlinks, outgoing links, source ID lookup, and conflict listing
 - Minimal HTTP server routes:
   - `GET /healthz`

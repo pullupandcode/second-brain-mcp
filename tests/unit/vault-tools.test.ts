@@ -1,12 +1,14 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { VaultIndex } from "../../src/vault/index.js";
+import { VaultWriteAuditStore } from "../../src/vault/audit.js";
 import { VaultReader } from "../../src/vault/reader.js";
-import { createVaultReadTools } from "../../src/vault/tools.js";
+import { createVaultReadTools, createVaultWriteTools } from "../../src/vault/tools.js";
+import { VaultWriteError, VaultWriter } from "../../src/vault/writer.js";
 
 let vaultRoot: string;
 let index: VaultIndex;
@@ -50,5 +52,81 @@ describe("createVaultReadTools", () => {
         conflicts: ["Calendar/Days/Today.sync-conflict-local.md"]
       }
     ]);
+  });
+});
+
+describe("createVaultWriteTools", () => {
+  test("adapts primitive write operations and records audit rows", async () => {
+    const writer = new VaultWriter({ vaultRoot, cooldownSeconds: 0 });
+    const audit = new VaultWriteAuditStore({ sqlitePath: ":memory:" });
+    const tools = createVaultWriteTools(writer, audit);
+
+    const created = await tools.create_note("Inbox/New.md", "Hello", { tags: ["capture"] });
+    expect(await readFile(join(vaultRoot, "Inbox", "New.md"), "utf8")).toBe(
+      "---\ntags: [capture]\n---\nHello"
+    );
+
+    const replaced = await tools.replace_note("Inbox/New.md", "Updated", created.resultSha256);
+    expect(await readFile(join(vaultRoot, "Inbox", "New.md"), "utf8")).toBe("Updated");
+
+    const frontmatterUpdated = await tools.update_frontmatter(
+      "Inbox/New.md",
+      { status: "processed" },
+      replaced.resultSha256
+    );
+    expect(await readFile(join(vaultRoot, "Inbox", "New.md"), "utf8")).toBe(
+      "---\nstatus: processed\n---\nUpdated"
+    );
+
+    await writeFile(
+      join(vaultRoot, "Inbox", "Marked.md"),
+      "Before\n<!-- mcp:section capture start -->\nold\n<!-- mcp:section capture end -->\nAfter"
+    );
+    const markerBase = await new VaultReader({ vaultRoot, ignoredGlobs: [] }).readNote("Inbox/Marked.md");
+    await tools.replace_section_by_marker(
+      "Inbox/Marked.md",
+      "capture",
+      "new",
+      markerBase.currentSha256
+    );
+
+    expect(audit.listRecentWrites().map((row) => row.operation)).toEqual([
+      "replace_section_by_marker",
+      "update_frontmatter",
+      "replace_note",
+      "create_note"
+    ]);
+    expect(audit.listRecentWrites().map((row) => row.path)).toEqual([
+      "Inbox/Marked.md",
+      "Inbox/New.md",
+      "Inbox/New.md",
+      "Inbox/New.md"
+    ]);
+
+    audit.close();
+  });
+
+  test("does not record failed writes and treats audit failures as best effort", async () => {
+    const writer = new VaultWriter({ vaultRoot, cooldownSeconds: 0 });
+    const audit = new VaultWriteAuditStore({ sqlitePath: ":memory:" });
+    const tools = createVaultWriteTools(writer, audit);
+
+    const created = await tools.create_note("Inbox/Failure.md", "Hello");
+    await expect(tools.replace_note("Inbox/Failure.md", "Updated", "stale")).rejects.toMatchObject({
+      code: "retryable_conflict"
+    } satisfies Partial<VaultWriteError>);
+    expect(audit.listRecentWrites().map((row) => row.operation)).toEqual(["create_note"]);
+    audit.close();
+
+    const closedAudit = new VaultWriteAuditStore({ sqlitePath: ":memory:" });
+    closedAudit.close();
+    const bestEffortTools = createVaultWriteTools(writer, closedAudit);
+
+    await expect(bestEffortTools.replace_note("Inbox/Failure.md", "Updated", created.resultSha256)).resolves.toEqual(
+      expect.objectContaining({
+        path: "Inbox/Failure.md"
+      })
+    );
+    expect(await readFile(join(vaultRoot, "Inbox", "Failure.md"), "utf8")).toBe("Updated");
   });
 });
