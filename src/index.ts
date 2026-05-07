@@ -1,6 +1,7 @@
 export { buildProtectedResourceMetadata } from "./auth/discovery.js";
 export { KNOWN_SCOPES, parseScopes } from "./auth/scopes.js";
 export { loadConfig, parseConfig } from "./config.js";
+export { createDailyNoteTools, DailyNoteError } from "./framework/daily.js";
 export { FRAMEWORK_PRESET_IDS, getFrameworkPreset, listFrameworkPresets } from "./framework/presets.js";
 export { createFrameworkRecordTools } from "./framework/records.js";
 export { composeFrameworkSchemas, parseFrameworkSchema } from "./framework/schema.js";
@@ -16,6 +17,16 @@ export { createVaultReadTools, createVaultWriteTools } from "./vault/tools.js";
 export type { OAuthProtectedResourceMetadata } from "./auth/discovery.js";
 export type { Scope } from "./auth/scopes.js";
 export type { ServerConfig } from "./config.js";
+export type {
+  DailyNoteAppendInput,
+  DailyNoteConfig,
+  DailyNoteDateInput,
+  DailyNoteErrorCode,
+  DailyNoteRepairMarkersInput,
+  DailyNoteSectionConfig,
+  DailyNoteTools,
+  DailyNoteToolsOptions
+} from "./framework/daily.js";
 export type { FrameworkPreset, FrameworkPresetId, FrameworkRecordType } from "./framework/presets.js";
 export type {
   CaptureForDateInput,

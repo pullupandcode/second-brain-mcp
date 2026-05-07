@@ -15,6 +15,7 @@ This implementation currently includes:
 - Framework schema parsing/composition, including `framework: custom` for non-preset systems
 - Framework-aware record creation with schema-driven paths, templates, and frontmatter
 - Dated capture records as files through `capture_for_date`, avoiding direct daily-note edits
+- Daily note get, marker append, and marker repair helpers for MCP-owned sections
 - Safe vault path normalization and traversal protection
 - Markdown/frontmatter parsing with tags, aliases, source IDs, and wikilink extraction
 - Local vault reader for note reads, SHA-256 hashes, and folder listing
