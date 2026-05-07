@@ -35,6 +35,8 @@ export type {
   FrameworkRegistryStoreOptions
 } from "./framework/registry.js";
 export type {
+  FrameworkInitInput,
+  FrameworkInitResult,
   FrameworkManagementTools,
   FrameworkManagementToolsOptions,
   FrameworkOverlayStatus,

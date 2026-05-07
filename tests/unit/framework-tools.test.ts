@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -44,6 +44,38 @@ afterEach(async () => {
 });
 
 describe("createFrameworkManagementTools", () => {
+  test("initializes a starter framework schema from a preset", async () => {
+    const tools = createFrameworkManagementTools({
+      reader: new VaultReader({ vaultRoot, ignoredGlobs: [] }),
+      registry: new FrameworkRegistryStore({ vaultRoot })
+    });
+
+    await rm(join(vaultRoot, "_meta", "framework.yaml"), { force: true });
+    expect(await tools.framework_init({ framework: "para" })).toEqual({
+      path: "_meta/framework.yaml",
+      framework: "para",
+      created: true,
+      overwritten: false
+    });
+    const source = await readFile(join(vaultRoot, "_meta", "framework.yaml"), "utf8");
+    expect(source).toContain("framework: para");
+    expect(source).toContain("project:");
+    expect((await tools.framework_compose()).types.project?.folder).toBe("Projects");
+
+    await expect(tools.framework_init({ framework: "para" })).rejects.toMatchObject({
+      code: "path_exists"
+    });
+    expect(await tools.framework_init({ framework: "zettel", mode: "overwrite" })).toEqual({
+      path: "_meta/framework.yaml",
+      framework: "zettel",
+      created: false,
+      overwritten: true
+    });
+    expect(await readFile(join(vaultRoot, "_meta", "framework.yaml"), "utf8")).toContain(
+      "framework: zettel"
+    );
+  });
+
   test("registers, lists, unregisters, and composes framework overlays", async () => {
     const tools = createFrameworkManagementTools({
       reader: new VaultReader({ vaultRoot, ignoredGlobs: [] }),

@@ -1,9 +1,12 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { composeFrameworkSchemas, parseFrameworkSchema, type EffectiveFrameworkSchema } from "./schema.js";
 import { type FrameworkOverlayRegistration, type FrameworkRegistryStore } from "./registry.js";
+import { getFrameworkPreset, type FrameworkPresetId } from "./presets.js";
 import type { VaultReader } from "../vault/reader.js";
 import { resolveVaultPath } from "../vault/path.js";
+import { VaultWriteError } from "../vault/writer.js";
 
 export interface FrameworkManagementToolsOptions {
   reader: VaultReader;
@@ -21,6 +24,19 @@ export interface FrameworkUnregisterInput {
   name: string;
 }
 
+export interface FrameworkInitInput {
+  framework: FrameworkPresetId;
+  outputPath?: string;
+  mode?: "create" | "overwrite";
+}
+
+export interface FrameworkInitResult {
+  path: string;
+  framework: FrameworkPresetId;
+  created: boolean;
+  overwritten: boolean;
+}
+
 export interface FrameworkOverlayStatus extends FrameworkOverlayRegistration {
   status: "registered" | "loaded" | "error";
   error?: string;
@@ -36,6 +52,7 @@ export interface FrameworkUnregisterResult {
 }
 
 export interface FrameworkManagementTools {
+  framework_init(input: FrameworkInitInput): Promise<FrameworkInitResult>;
   framework_register(input: FrameworkRegisterInput): Promise<FrameworkOverlayStatus[]>;
   framework_unregister(input: FrameworkUnregisterInput): Promise<FrameworkUnregisterResult>;
   framework_list(): Promise<FrameworkOverlayStatus[]>;
@@ -47,6 +64,7 @@ export function createFrameworkManagementTools(
   options: FrameworkManagementToolsOptions
 ): FrameworkManagementTools {
   return {
+    framework_init: (input) => frameworkInit(options, input),
     framework_register: async (input) =>
       toRegisteredStatuses(
         await options.registry.register({
@@ -61,6 +79,27 @@ export function createFrameworkManagementTools(
     framework_list: async () => toRegisteredStatuses(await options.registry.list()),
     framework_reload: () => reloadFramework(options),
     framework_compose: () => composeFramework(options)
+  };
+}
+
+async function frameworkInit(
+  options: FrameworkManagementToolsOptions,
+  input: FrameworkInitInput
+): Promise<FrameworkInitResult> {
+  const outputPath = input.outputPath ?? "_meta/framework.yaml";
+  const absolutePath = resolveVaultPath(options.reader.vaultRoot, outputPath);
+  const exists = await fileExists(absolutePath);
+  if (exists && input.mode !== "overwrite") {
+    throw new VaultWriteError("path_exists", `Path already exists: ${outputPath}`);
+  }
+  const source = materializePresetSchema(input.framework);
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, source, "utf8");
+  return {
+    path: outputPath,
+    framework: input.framework,
+    created: !exists,
+    overwritten: exists
   };
 }
 
@@ -101,6 +140,42 @@ async function reloadFramework(
 
 function readVaultText(reader: VaultReader, vaultPath: string): Promise<string> {
   return readFile(resolveVaultPath(reader.vaultRoot, vaultPath), "utf8");
+}
+
+function materializePresetSchema(framework: FrameworkPresetId): string {
+  const preset = getFrameworkPreset(framework);
+  if (preset === undefined) {
+    throw new Error(`Unknown framework preset: ${framework}`);
+  }
+  const lines = [
+    "version: 1",
+    "schema_kind: base",
+    `framework: ${preset.id}`,
+    `description: "${preset.name} starter schema"`,
+    "",
+    "types:"
+  ];
+  for (const type of preset.types) {
+    lines.push(
+      `  ${type.name}:`,
+      `    description: "${type.description}"`,
+      `    folder: ${type.defaultFolder}`,
+      `    filename: "{title}.md"`
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+async function fileExists(absolutePath: string): Promise<boolean> {
+  try {
+    await stat(absolutePath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function toRegisteredStatuses(
