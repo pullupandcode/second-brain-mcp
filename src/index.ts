@@ -2,6 +2,7 @@ export { buildProtectedResourceMetadata } from "./auth/discovery.js";
 export { KNOWN_SCOPES, parseScopes } from "./auth/scopes.js";
 export { loadConfig, parseConfig } from "./config.js";
 export { FRAMEWORK_PRESET_IDS, getFrameworkPreset, listFrameworkPresets } from "./framework/presets.js";
+export { createFrameworkRecordTools } from "./framework/records.js";
 export { composeFrameworkSchemas, parseFrameworkSchema } from "./framework/schema.js";
 export { createHttpServer } from "./server.js";
 export { createToolRegistry, listToolsForScopes } from "./tools/registry.js";
@@ -16,6 +17,12 @@ export type { OAuthProtectedResourceMetadata } from "./auth/discovery.js";
 export type { Scope } from "./auth/scopes.js";
 export type { ServerConfig } from "./config.js";
 export type { FrameworkPreset, FrameworkPresetId, FrameworkRecordType } from "./framework/presets.js";
+export type {
+  CreateRecordInput,
+  FrameworkRecordTools,
+  FrameworkRecordToolsOptions,
+  RecordTypeSummary
+} from "./framework/records.js";
 export type {
   EffectiveFrameworkSchema,
   FrameworkKind,
