@@ -105,6 +105,49 @@ describe("createFrameworkRecordTools", () => {
       }
     ]);
   });
+
+  test("creates a dated capture record without touching the daily note", async () => {
+    const schema = effectiveSchema({
+      capture: {
+        description: "Agent capture.",
+        folder: "Calendar/Records/Captures",
+        filename: "{date:YYYY-MM-DD HH-mm} [{title}].md"
+      }
+    });
+    const tools = createFrameworkRecordTools({
+      schema,
+      reader: new VaultReader({ vaultRoot, ignoredGlobs: [] }),
+      writeTools: createVaultWriteTools(new VaultWriter({ vaultRoot, cooldownSeconds: 0 }), audit)
+    });
+
+    const result = await tools.capture_for_date({
+      content: "Remember to review the MCP schema.",
+      date: "2026-05-07T16:45:00Z",
+      sourceClient: "codex",
+      sourceId: "msg-123",
+      captureType: "idea",
+      title: "Schema review"
+    });
+
+    expect(result.path).toBe("Calendar/Records/Captures/2026-05-07 16-45 [Schema review].md");
+    expect(await readFile(join(vaultRoot, result.path), "utf8")).toBe(
+      [
+        "---",
+        "type: capture",
+        "title: Schema review",
+        "date: 2026-05-07",
+        "source_client: codex",
+        "source_id: msg-123",
+        "capture_type: idea",
+        "---",
+        "Remember to review the MCP schema."
+      ].join("\n")
+    );
+    await expect(readFile(join(vaultRoot, "Calendar", "Days", "2026-05-07.md"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT"
+    });
+    expect(audit.listRecentWrites().map((row) => row.operation)).toEqual(["create_note"]);
+  });
 });
 
 function effectiveSchema(types: EffectiveFrameworkSchema["types"]): EffectiveFrameworkSchema {

@@ -18,6 +18,7 @@ export type { Scope } from "./auth/scopes.js";
 export type { ServerConfig } from "./config.js";
 export type { FrameworkPreset, FrameworkPresetId, FrameworkRecordType } from "./framework/presets.js";
 export type {
+  CaptureForDateInput,
   CreateRecordInput,
   FrameworkRecordTools,
   FrameworkRecordToolsOptions,

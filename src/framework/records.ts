@@ -18,6 +18,15 @@ export interface CreateRecordInput {
   fields?: Record<string, FrontmatterValue>;
 }
 
+export interface CaptureForDateInput {
+  content: string;
+  date?: string;
+  sourceClient: string;
+  sourceId?: string;
+  captureType?: string;
+  title?: string;
+}
+
 export interface RecordTypeSummary {
   name: string;
   folder: string;
@@ -26,6 +35,7 @@ export interface RecordTypeSummary {
 
 export interface FrameworkRecordTools {
   create_record(input: CreateRecordInput): Promise<WriteResult>;
+  capture_for_date(input: CaptureForDateInput): Promise<WriteResult>;
   list_record_types(): RecordTypeSummary[];
 }
 
@@ -34,8 +44,40 @@ export function createFrameworkRecordTools(
 ): FrameworkRecordTools {
   return {
     create_record: (input) => createRecord(options, input),
+    capture_for_date: (input) => captureForDate(options, input),
     list_record_types: () => listRecordTypes(options.schema)
   };
+}
+
+function captureForDate(
+  options: FrameworkRecordToolsOptions,
+  input: CaptureForDateInput
+): Promise<WriteResult> {
+  if (options.schema.types.capture === undefined) {
+    throw new Error("Effective framework schema does not define a capture type");
+  }
+  const date = input.date === undefined ? new Date() : new Date(input.date);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("date must be a valid date");
+  }
+
+  const fields: Record<string, FrontmatterValue> = {
+    source_client: input.sourceClient
+  };
+  if (input.sourceId !== undefined) {
+    fields.source_id = input.sourceId;
+  }
+  if (input.captureType !== undefined) {
+    fields.capture_type = input.captureType;
+  }
+
+  return createRecord(options, {
+    type: "capture",
+    title: input.title ?? "Capture",
+    date: date.toISOString(),
+    body: input.content,
+    fields
+  });
 }
 
 async function createRecord(
