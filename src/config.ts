@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import * as TOML from "@iarna/toml";
+import { parse as parseToml } from "smol-toml";
 
 export type CaptureDefaultPattern = "A" | "B";
 
@@ -64,7 +64,7 @@ export async function loadConfig(path: string): Promise<ServerConfig> {
 }
 
 export function parseConfig(source: string): ServerConfig {
-  const raw = TOML.parse(source) as RawConfig;
+  const raw = parseToml(source) as RawConfig;
   const listen = requireString(raw.listen, "listen");
   const publicBaseUrl = requireHttpUrl(raw.public_base_url, "public_base_url");
   const vaultPath = requireString(raw.vault_path, "vault_path");
