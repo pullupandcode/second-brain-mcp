@@ -14,6 +14,7 @@ This implementation currently includes:
 - Framework-neutral record tool names and built-in presets for LYT, PARA, and Zettel
 - Framework schema parsing/composition, including `framework: custom` for non-preset systems
 - Framework overlay registration state in `_meta/schemas.json`
+- Framework management tools for register, unregister, list, reload, and compose
 - Framework-aware record creation with schema-driven paths, templates, and frontmatter
 - Dated capture records as files through `capture_for_date`, avoiding direct daily-note edits
 - Daily note get, marker append, and marker repair helpers for MCP-owned sections

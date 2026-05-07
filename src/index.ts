@@ -6,6 +6,7 @@ export { FRAMEWORK_PRESET_IDS, getFrameworkPreset, listFrameworkPresets } from "
 export { FrameworkRegistryStore } from "./framework/registry.js";
 export { createFrameworkRecordTools } from "./framework/records.js";
 export { composeFrameworkSchemas, parseFrameworkSchema } from "./framework/schema.js";
+export { createFrameworkManagementTools } from "./framework/tools.js";
 export { createHttpServer } from "./server.js";
 export { createToolRegistry, listToolsForScopes } from "./tools/registry.js";
 export { parseMarkdown } from "./vault/markdown.js";
@@ -33,6 +34,15 @@ export type {
   FrameworkOverlayRegistration,
   FrameworkRegistryStoreOptions
 } from "./framework/registry.js";
+export type {
+  FrameworkManagementTools,
+  FrameworkManagementToolsOptions,
+  FrameworkOverlayStatus,
+  FrameworkRegisterInput,
+  FrameworkReloadResult,
+  FrameworkUnregisterInput,
+  FrameworkUnregisterResult
+} from "./framework/tools.js";
 export type {
   CaptureForDateInput,
   CreateRecordInput,
