@@ -88,12 +88,27 @@ async function frameworkInit(
 ): Promise<FrameworkInitResult> {
   const outputPath = input.outputPath ?? "_meta/framework.yaml";
   const absolutePath = resolveVaultPath(options.reader.vaultRoot, outputPath);
-  const exists = await fileExists(absolutePath);
-  if (exists && input.mode !== "overwrite") {
-    throw new VaultWriteError("path_exists", `Path already exists: ${outputPath}`);
-  }
   const source = materializePresetSchema(input.framework);
   await mkdir(path.dirname(absolutePath), { recursive: true });
+
+  if (input.mode !== "overwrite") {
+    try {
+      await writeFile(absolutePath, source, { encoding: "utf8", flag: "wx" });
+    } catch (error) {
+      if (isFileExistsError(error)) {
+        throw new VaultWriteError("path_exists", `Path already exists: ${outputPath}`);
+      }
+      throw error;
+    }
+    return {
+      path: outputPath,
+      framework: input.framework,
+      created: true,
+      overwritten: false
+    };
+  }
+
+  const exists = await fileExists(absolutePath);
   await writeFile(absolutePath, source, "utf8");
   return {
     path: outputPath,
@@ -176,6 +191,10 @@ async function fileExists(absolutePath: string): Promise<boolean> {
     }
     throw error;
   }
+}
+
+function isFileExistsError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
 }
 
 function toRegisteredStatuses(

@@ -76,6 +76,25 @@ describe("createFrameworkManagementTools", () => {
     );
   });
 
+  test("allows only one concurrent create-mode framework init", async () => {
+    const tools = createFrameworkManagementTools({
+      reader: new VaultReader({ vaultRoot, ignoredGlobs: [] }),
+      registry: new FrameworkRegistryStore({ vaultRoot })
+    });
+    await rm(join(vaultRoot, "_meta", "framework.yaml"), { force: true });
+
+    const results = await Promise.allSettled([
+      tools.framework_init({ framework: "para" }),
+      tools.framework_init({ framework: "zettel" })
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected).toMatchObject({
+      reason: expect.objectContaining({ code: "path_exists" })
+    });
+  });
+
   test("registers, lists, unregisters, and composes framework overlays", async () => {
     const tools = createFrameworkManagementTools({
       reader: new VaultReader({ vaultRoot, ignoredGlobs: [] }),
