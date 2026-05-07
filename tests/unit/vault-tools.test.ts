@@ -18,9 +18,20 @@ beforeEach(async () => {
   vaultRoot = await mkdtemp(join(tmpdir(), "second-brain-tools-"));
   await mkdir(join(vaultRoot, "Atlas", "Maps"), { recursive: true });
   await mkdir(join(vaultRoot, "Calendar", "Days"), { recursive: true });
+  await mkdir(join(vaultRoot, "rm", "Notebook"), { recursive: true });
   await writeFile(join(vaultRoot, "Atlas", "Maps", "Home.md"), "# Home\n");
   await writeFile(join(vaultRoot, "Calendar", "Days", "Today.md"), "# Today\n[[Home]] alpaca\n");
   await writeFile(join(vaultRoot, "Calendar", "Days", "Today.sync-conflict-local.md"), "# Conflict\n");
+  await writeFile(
+    join(vaultRoot, "rm", "Notebook", "p1-def-page.md"),
+    `---
+source: remarkable
+source_id: rmpage:abc-notebook:def-page-uuid
+aliases: [def-page, Page 1]
+---
+# Page 1
+`
+  );
 
   reader = new VaultReader({ vaultRoot, ignoredGlobs: ["**/*.sync-conflict-*"] });
   index = new VaultIndex({ reader, sqlitePath: ":memory:" });
@@ -39,13 +50,18 @@ describe("createVaultReadTools", () => {
     expect((await tools.read_note("Atlas/Maps/Home.md")).parsed.title).toBe("Home");
     expect((await tools.list_folder("", true)).map((entry) => entry.path).sort()).toEqual([
       "Atlas/Maps/Home.md",
-      "Calendar/Days/Today.md"
+      "Calendar/Days/Today.md",
+      "rm/Notebook/p1-def-page.md"
     ]);
     expect(tools.search("alpaca").map((result) => result.path)).toEqual([
       "Calendar/Days/Today.md"
     ]);
     expect(tools.get_outgoing_links("Calendar/Days/Today.md")).toEqual(["Home"]);
     expect(tools.get_backlinks("Home")).toEqual(["Calendar/Days/Today.md"]);
+    expect(tools.link_to_page("rmnotebook:abc-notebook", "def-page-uuid")).toBe(
+      "[[rm/Notebook/p1-def-page.md|def-page-uuid]]"
+    );
+    expect(tools.link_to_page("rmnotebook:abc-notebook", "missing-page")).toBeUndefined();
     expect(tools.list_vault_conflicts()).toEqual([
       {
         canonical: "Calendar/Days/Today.md",

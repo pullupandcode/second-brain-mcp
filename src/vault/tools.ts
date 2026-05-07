@@ -10,6 +10,7 @@ export interface VaultReadTools {
   search(query: string, filters?: SearchFilters): SearchResult[];
   get_backlinks(path: string): string[];
   get_outgoing_links(path: string): string[];
+  link_to_page(notebook: string, pageUuid: string): string | undefined;
   list_vault_conflicts(): VaultConflict[];
 }
 
@@ -45,6 +46,7 @@ export function createVaultReadTools(reader: VaultReader, index: VaultIndex): Va
     search: (query, filters) => index.search(query, filters),
     get_backlinks: (path) => index.getBacklinks(path),
     get_outgoing_links: (path) => index.getOutgoingLinks(path),
+    link_to_page: (notebook, pageUuid) => linkToPage(index, notebook, pageUuid),
     list_vault_conflicts: () => index.listConflicts()
   };
 }
@@ -100,4 +102,10 @@ function recordWrite(
     // The vault write has already succeeded. Treat audit persistence as best effort
     // so callers do not retry a completed mutation and create duplicate/conflict writes.
   }
+}
+
+function linkToPage(index: VaultIndex, notebook: string, pageUuid: string): string | undefined {
+  const notebookUuid = notebook.replace(/^rmnotebook:/, "");
+  const path = index.findBySourceId(`rmpage:${notebookUuid}:${pageUuid}`);
+  return path === undefined ? undefined : `[[${path}|${pageUuid}]]`;
 }
