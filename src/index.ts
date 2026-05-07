@@ -3,6 +3,7 @@ export { KNOWN_SCOPES, parseScopes } from "./auth/scopes.js";
 export { loadConfig, parseConfig } from "./config.js";
 export { createDailyNoteTools, DailyNoteError } from "./framework/daily.js";
 export { FRAMEWORK_PRESET_IDS, getFrameworkPreset, listFrameworkPresets } from "./framework/presets.js";
+export { FrameworkRegistryStore } from "./framework/registry.js";
 export { createFrameworkRecordTools } from "./framework/records.js";
 export { composeFrameworkSchemas, parseFrameworkSchema } from "./framework/schema.js";
 export { createHttpServer } from "./server.js";
@@ -28,6 +29,10 @@ export type {
   DailyNoteToolsOptions
 } from "./framework/daily.js";
 export type { FrameworkPreset, FrameworkPresetId, FrameworkRecordType } from "./framework/presets.js";
+export type {
+  FrameworkOverlayRegistration,
+  FrameworkRegistryStoreOptions
+} from "./framework/registry.js";
 export type {
   CaptureForDateInput,
   CreateRecordInput,
