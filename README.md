@@ -16,6 +16,7 @@ This implementation currently includes:
 - Framework overlay registration state in `_meta/schemas.json`
 - Framework management tools for init, register, unregister, list, reload, and compose
 - Framework-aware record creation with schema-driven paths, templates, and frontmatter
+- Provider-neutral OCR job queue contracts for notebook OCR, status polling, and renumber jobs
 - Dated capture records as files through `capture_for_date`, avoiding direct daily-note edits
 - Daily note get, marker append, and marker repair helpers for MCP-owned sections
 - Safe vault path normalization and traversal protection

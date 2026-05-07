@@ -7,6 +7,7 @@ export { FrameworkRegistryStore } from "./framework/registry.js";
 export { createFrameworkRecordTools } from "./framework/records.js";
 export { composeFrameworkSchemas, parseFrameworkSchema } from "./framework/schema.js";
 export { createFrameworkManagementTools } from "./framework/tools.js";
+export { createOcrTools, OcrJobError, OcrJobQueue } from "./ocr/jobs.js";
 export { createHttpServer } from "./server.js";
 export { createToolRegistry, listToolsForScopes } from "./tools/registry.js";
 export { parseMarkdown } from "./vault/markdown.js";
@@ -59,6 +60,18 @@ export type {
   FrameworkTypeDefinition,
   SchemaKind
 } from "./framework/schema.js";
+export type {
+  OcrJob,
+  OcrJobErrorCode,
+  OcrJobInput,
+  OcrJobQueueOptions,
+  OcrJobState,
+  OcrJobType,
+  OcrNotebookInput,
+  OcrQueuedJob,
+  OcrRenumberInput,
+  OcrTools
+} from "./ocr/jobs.js";
 export type { CreateServerOptions } from "./server.js";
 export type { ToolDefinition } from "./tools/registry.js";
 export type {
