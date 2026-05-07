@@ -8,6 +8,7 @@ import { normalizeVaultPath, resolveVaultPath } from "./path.js";
 export type VaultWriteErrorCode =
   | "path_exists"
   | "path_missing"
+  | "path_quarantined"
   | "retryable_conflict"
   | "markers_missing";
 
@@ -28,6 +29,7 @@ export class VaultWriteError extends Error {
 export interface VaultWriterOptions {
   vaultRoot: string;
   cooldownSeconds: number;
+  quarantinedPaths?: ReadonlySet<string>;
 }
 
 export interface WriteResult {
@@ -39,11 +41,15 @@ export interface WriteResult {
 export class VaultWriter {
   private readonly vaultRoot: string;
   private readonly cooldownMs: number;
+  private readonly quarantinedPaths: ReadonlySet<string>;
   private readonly locks = new Map<string, Promise<void>>();
 
   constructor(options: VaultWriterOptions) {
     this.vaultRoot = path.resolve(options.vaultRoot);
     this.cooldownMs = options.cooldownSeconds * 1000;
+    this.quarantinedPaths = new Set(
+      [...(options.quarantinedPaths ?? new Set<string>())].map(normalizeVaultPath)
+    );
   }
 
   async createNote(
@@ -52,6 +58,7 @@ export class VaultWriter {
     frontmatter?: Record<string, FrontmatterValue>
   ): Promise<WriteResult> {
     return this.withPathLock(vaultPath, async (normalizedPath) => {
+      this.assertNotQuarantined(normalizedPath);
       const absolutePath = resolveVaultPath(this.vaultRoot, normalizedPath);
       if (await exists(absolutePath)) {
         throw new VaultWriteError("path_exists", `Path already exists: ${normalizedPath}`);
@@ -113,6 +120,7 @@ export class VaultWriter {
     buildNextContent: (currentContent: string) => string
   ): Promise<WriteResult> {
     return this.withPathLock(vaultPath, async (normalizedPath) => {
+      this.assertNotQuarantined(normalizedPath);
       const absolutePath = resolveVaultPath(this.vaultRoot, normalizedPath);
       if (!(await exists(absolutePath))) {
         throw new VaultWriteError("path_missing", `Path does not exist: ${normalizedPath}`);
@@ -146,6 +154,12 @@ export class VaultWriter {
     const currentStat = await stat(absolutePath);
     if (Date.now() - currentStat.mtimeMs < this.cooldownMs) {
       throw new VaultWriteError("retryable_conflict", "Path is inside write cooldown window");
+    }
+  }
+
+  private assertNotQuarantined(normalizedPath: string): void {
+    if (this.quarantinedPaths.has(normalizedPath)) {
+      throw new VaultWriteError("path_quarantined", `Path is quarantined: ${normalizedPath}`);
     }
   }
 

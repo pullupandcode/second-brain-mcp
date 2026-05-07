@@ -41,6 +41,26 @@ describe("VaultWriter", () => {
     });
   });
 
+  test("rejects writes to quarantined canonical paths", async () => {
+    const quarantinedWriter = new VaultWriter({
+      vaultRoot,
+      cooldownSeconds: 0,
+      quarantinedPaths: new Set(["Notes/Conflict.md"])
+    });
+
+    await expect(quarantinedWriter.createNote("Notes/Conflict.md", "blocked")).rejects.toMatchObject({
+      code: "path_quarantined"
+    });
+
+    await writeFile(join(vaultRoot, "Notes", "Conflict.md"), "existing");
+    const base = await reader.readNote("Notes/Conflict.md");
+    await expect(
+      quarantinedWriter.replaceNote("Notes/Conflict.md", "blocked", base.currentSha256)
+    ).rejects.toMatchObject({
+      code: "path_quarantined"
+    });
+  });
+
   test("replaces a note when base hash matches", async () => {
     await writer.createNote("Notes/New.md", "Hello");
     const base = await reader.readNote("Notes/New.md");
