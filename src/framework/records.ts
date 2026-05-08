@@ -1,4 +1,5 @@
 import type { EffectiveFrameworkSchema, FrameworkTypeDefinition } from "./schema.js";
+import type { VaultIndex } from "../vault/index.js";
 import type { FrontmatterValue } from "../vault/markdown.js";
 import type { VaultReader } from "../vault/reader.js";
 import type { VaultWriteTools } from "../vault/tools.js";
@@ -8,6 +9,7 @@ export interface FrameworkRecordToolsOptions {
   schema: EffectiveFrameworkSchema;
   reader: VaultReader;
   writeTools: VaultWriteTools;
+  index?: VaultIndex;
 }
 
 export interface CreateRecordInput {
@@ -27,6 +29,10 @@ export interface CaptureForDateInput {
   title?: string;
 }
 
+export interface InboxCaptureInput extends CaptureForDateInput {
+  strategy?: "create" | "replace_by_source_id";
+}
+
 export interface RecordTypeSummary {
   name: string;
   folder: string;
@@ -35,6 +41,7 @@ export interface RecordTypeSummary {
 
 export interface FrameworkRecordTools {
   create_record(input: CreateRecordInput): Promise<WriteResult>;
+  inbox_capture(input: InboxCaptureInput): Promise<WriteResult>;
   capture_for_date(input: CaptureForDateInput): Promise<WriteResult>;
   list_record_types(): RecordTypeSummary[];
 }
@@ -44,9 +51,43 @@ export function createFrameworkRecordTools(
 ): FrameworkRecordTools {
   return {
     create_record: (input) => createRecord(options, input),
+    inbox_capture: (input) => inboxCapture(options, input),
     capture_for_date: (input) => captureForDate(options, input),
     list_record_types: () => listRecordTypes(options.schema)
   };
+}
+
+async function inboxCapture(
+  options: FrameworkRecordToolsOptions,
+  input: InboxCaptureInput
+): Promise<WriteResult> {
+  if (input.strategy !== "replace_by_source_id") {
+    return captureForDate(options, input);
+  }
+  if (input.sourceId === undefined) {
+    throw new Error("sourceId is required for replace_by_source_id capture");
+  }
+  if (options.index === undefined) {
+    throw new Error("Vault index is required for replace_by_source_id capture");
+  }
+
+  const existingPath = options.index.findBySourceId(input.sourceId);
+  if (existingPath === undefined) {
+    return captureForDate(options, input);
+  }
+
+  const current = await options.reader.readNote(existingPath);
+  const date = input.date === undefined ? new Date() : new Date(input.date);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("date must be a valid date");
+  }
+
+  return options.writeTools.replace_note(existingPath, input.content, current.currentSha256, {
+    type: "capture",
+    title: input.title ?? current.parsed.title ?? "Capture",
+    date: formatDate(date, "YYYY-MM-DD"),
+    ...captureFields(input)
+  });
 }
 
 function captureForDate(
@@ -61,6 +102,16 @@ function captureForDate(
     throw new Error("date must be a valid date");
   }
 
+  return createRecord(options, {
+    type: "capture",
+    title: input.title ?? "Capture",
+    date: date.toISOString(),
+    body: input.content,
+    fields: captureFields(input)
+  });
+}
+
+function captureFields(input: CaptureForDateInput): Record<string, FrontmatterValue> {
   const fields: Record<string, FrontmatterValue> = {
     source_client: input.sourceClient
   };
@@ -70,14 +121,7 @@ function captureForDate(
   if (input.captureType !== undefined) {
     fields.capture_type = input.captureType;
   }
-
-  return createRecord(options, {
-    type: "capture",
-    title: input.title ?? "Capture",
-    date: date.toISOString(),
-    body: input.content,
-    fields
-  });
+  return fields;
 }
 
 async function createRecord(

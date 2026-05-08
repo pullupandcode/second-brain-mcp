@@ -51,6 +51,7 @@ export type {
   CreateRecordInput,
   FrameworkRecordTools,
   FrameworkRecordToolsOptions,
+  InboxCaptureInput,
   RecordTypeSummary
 } from "./framework/records.js";
 export type {
