@@ -27,6 +27,7 @@ This implementation currently includes:
 - Primitive write tool adapter with append-only SQLite write audit rows for successful writes
 - Rebuildable SQLite FTS index for search, backlinks, outgoing links, source ID lookup, and conflict listing
 - Config-file based HTTP server startup
+- Config-backed read tool runtime wiring for `tools/call`
 - Minimal HTTP server routes:
   - `GET /healthz`
   - `GET /.well-known/oauth-protected-resource`

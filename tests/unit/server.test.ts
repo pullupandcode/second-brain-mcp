@@ -1,5 +1,5 @@
 import { AddressInfo } from "node:net";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -228,6 +228,8 @@ describe("createHttpServer", () => {
   test("starts an HTTP server from a TOML config file", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-server-"));
     try {
+      await mkdir(join(tempRoot, "vault"), { recursive: true });
+      await mkdir(join(tempRoot, "state"), { recursive: true });
       const configPath = join(tempRoot, "config.toml");
       await writeFile(
         configPath,
@@ -266,6 +268,83 @@ log_args = false
       const health = await fetch(`${baseUrl}/healthz`);
       expect(health.status).toBe(200);
       expect(await health.json()).toEqual({ ok: true });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("wires config-backed read tools into JSON-RPC tools/call", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-runtime-"));
+    try {
+      const vaultPath = join(tempRoot, "vault");
+      const statePath = join(tempRoot, "state");
+      await mkdir(join(vaultPath, "Inbox"), { recursive: true });
+      await mkdir(statePath, { recursive: true });
+      await writeFile(join(vaultPath, "Inbox", "Hello.md"), "# Hello\n\nruntime read\n");
+      const configPath = join(tempRoot, "config.toml");
+      await writeFile(
+        configPath,
+        `
+listen = "127.0.0.1:0"
+public_base_url = "https://second-brain-mcp.example.com"
+vault_path = "${vaultPath}"
+state_path = "${statePath}"
+
+[auth]
+audience = "second-brain-mcp"
+trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+
+[index]
+watcher_polling = false
+ignored_globs = ["**/*.sync-conflict-*"]
+
+[writes]
+cooldown_seconds = 0
+
+[daily_note]
+capture_default_pattern = "A"
+
+[logging]
+log_args = false
+`
+      );
+
+      const server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      const address = server.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const response = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer scope=vault:read",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 10,
+          method: "tools/call",
+          params: { name: "read_note", arguments: { path: "Inbox/Hello.md" } }
+        })
+      });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        jsonrpc: "2.0",
+        id: 10,
+        result: {
+          content: [{ type: "text", text: expect.stringContaining("runtime read") }],
+          structuredContent: {
+            path: "Inbox/Hello.md",
+            parsed: {
+              title: "Hello"
+            }
+          }
+        }
+      });
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

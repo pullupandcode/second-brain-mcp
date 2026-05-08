@@ -3,6 +3,7 @@ import http, { IncomingMessage, ServerResponse } from "node:http";
 import { buildProtectedResourceMetadata } from "./auth/discovery.js";
 import { parseScopes } from "./auth/scopes.js";
 import { loadConfig, type ServerConfig } from "./config.js";
+import { createRuntimeToolHandlers } from "./runtime.js";
 import { createToolRegistry, listToolsForScopes, type ToolDefinition } from "./tools/registry.js";
 
 type JsonRpcId = string | number;
@@ -45,7 +46,9 @@ export function createHttpServer(options: CreateServerOptions): http.Server {
 
 export async function startHttpServerFromConfigFile(configPath: string): Promise<http.Server> {
   const config = await loadConfig(configPath);
-  const server = createHttpServer({ config });
+  const runtime = await createRuntimeToolHandlers(config);
+  const server = createHttpServer({ config, toolHandlers: runtime.handlers });
+  server.on("close", () => runtime.close());
   const listen = parseListenAddress(config.listen);
   await new Promise<void>((resolve) => {
     server.listen(listen.port, listen.host, resolve);

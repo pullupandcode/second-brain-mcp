@@ -8,6 +8,7 @@ export { createFrameworkRecordTools } from "./framework/records.js";
 export { composeFrameworkSchemas, parseFrameworkSchema } from "./framework/schema.js";
 export { createFrameworkManagementTools } from "./framework/tools.js";
 export { createOcrTools, OcrJobError, OcrJobQueue } from "./ocr/jobs.js";
+export { createRuntimeToolHandlers } from "./runtime.js";
 export { createHttpServer, startHttpServerFromConfigFile } from "./server.js";
 export { createToolRegistry, listToolsForScopes } from "./tools/registry.js";
 export { parseMarkdown } from "./vault/markdown.js";
@@ -80,6 +81,7 @@ export type {
   ToolHandler,
   ToolHandlerMap
 } from "./server.js";
+export type { RuntimeToolHandlers } from "./runtime.js";
 export type { ToolDefinition } from "./tools/registry.js";
 export type {
   VaultWriteAuditStoreOptions,
