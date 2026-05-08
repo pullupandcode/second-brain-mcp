@@ -107,7 +107,8 @@ describe("createHttpServer", () => {
       headers: {
         accept: "application/json, text/event-stream",
         authorization: "Bearer scope=vault:read daily:append",
-        "content-type": "application/json"
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
@@ -143,7 +144,9 @@ describe("createHttpServer", () => {
       headers: {
         accept: "application/json, text/event-stream",
         authorization: "Bearer scope=vault:read",
-        "content-type": "application/json"
+        "content-type": "application/json",
+        "mcp-method": "tools/call",
+        "mcp-name": "read_note"
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
@@ -176,7 +179,9 @@ describe("createHttpServer", () => {
       headers: {
         accept: "application/json, text/event-stream",
         authorization: "Bearer scope=vault:capture",
-        "content-type": "application/json"
+        "content-type": "application/json",
+        "mcp-method": "tools/call",
+        "mcp-name": "read_note"
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
@@ -204,7 +209,8 @@ describe("createHttpServer", () => {
       method: "POST",
       headers: {
         accept: "application/json, text/event-stream",
-        "content-type": "application/json"
+        "content-type": "application/json",
+        "mcp-method": "resources/read"
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
@@ -221,6 +227,36 @@ describe("createHttpServer", () => {
       error: {
         code: -32601,
         message: "Method not found"
+      }
+    });
+  });
+
+  test("rejects MCP requests when standard headers do not match the JSON-RPC body", async () => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-method": "tools/call",
+        "mcp-name": "wrong_tool"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "header-mismatch",
+        method: "tools/call",
+        params: { name: "read_note", arguments: {} }
+      })
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: "header-mismatch",
+      error: {
+        code: -32600,
+        message: "MCP headers do not match JSON-RPC body"
       }
     });
   });
@@ -321,7 +357,9 @@ log_args = false
         headers: {
           accept: "application/json, text/event-stream",
           authorization: "Bearer scope=vault:read",
-          "content-type": "application/json"
+          "content-type": "application/json",
+          "mcp-method": "tools/call",
+          "mcp-name": "read_note"
         },
         body: JSON.stringify({
           jsonrpc: "2.0",

@@ -109,6 +109,18 @@ async function handleMcpPost(
     return;
   }
 
+  if (!mcpHeadersMatchRequest(request, message)) {
+    sendJson(response, 400, {
+      jsonrpc: "2.0",
+      id: message.id,
+      error: {
+        code: -32600,
+        message: "MCP headers do not match JSON-RPC body"
+      }
+    });
+    return;
+  }
+
   if (message.method === "tools/list") {
     const scopes = parseScopes(extractDevelopmentScopeClaim(request.headers.authorization));
     sendJson(response, 200, {
@@ -134,6 +146,41 @@ async function handleMcpPost(
       message: "Method not found"
     }
   });
+}
+
+function mcpHeadersMatchRequest(request: IncomingMessage, message: JsonRpcRequest): boolean {
+  const methodHeader = singleHeaderValue(request.headers["mcp-method"]);
+  if (methodHeader !== undefined && methodHeader !== message.method) {
+    return false;
+  }
+
+  const expectedName = mcpNameFromRequest(message);
+  const nameHeader = singleHeaderValue(request.headers["mcp-name"]);
+  if (nameHeader !== undefined && nameHeader !== expectedName) {
+    return false;
+  }
+
+  return true;
+}
+
+function mcpNameFromRequest(message: JsonRpcRequest): string | undefined {
+  if (message.method === "tools/call") {
+    return parseToolCallParams(message.params)?.name;
+  }
+  if (message.method === "resources/read" || message.method === "prompts/get") {
+    const params = message.params;
+    if (typeof params !== "object" || params === null || Array.isArray(params)) {
+      return undefined;
+    }
+    const key = message.method === "resources/read" ? "uri" : "name";
+    const value = (params as Record<string, unknown>)[key];
+    return typeof value === "string" ? value : undefined;
+  }
+  return undefined;
+}
+
+function singleHeaderValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 async function handleToolCall(
