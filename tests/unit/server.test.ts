@@ -1,5 +1,5 @@
 import { AddressInfo } from "node:net";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { createHttpServer, startHttpServerFromConfigFile } from "../../src/server.js";
 import type { ServerConfig } from "../../src/config.js";
 import type { ToolHandlerMap } from "../../src/server.js";
+import { VaultWriteAuditStore } from "../../src/vault/audit.js";
 
 const config: ServerConfig = {
   listen: "127.0.0.1:0",
@@ -383,6 +384,124 @@ log_args = false
           }
         }
       });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("wires config-backed write tools into JSON-RPC tools/call with audit", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-write-runtime-"));
+    try {
+      const vaultPath = join(tempRoot, "vault");
+      const statePath = join(tempRoot, "state");
+      const auditPath = join(statePath, "write-audit.sqlite");
+      await mkdir(vaultPath, { recursive: true });
+      await mkdir(statePath, { recursive: true });
+      const configPath = join(tempRoot, "config.toml");
+      await writeFile(
+        configPath,
+        `
+listen = "127.0.0.1:0"
+public_base_url = "https://second-brain-mcp.example.com"
+vault_path = "${vaultPath}"
+state_path = "${statePath}"
+
+[auth]
+audience = "second-brain-mcp"
+trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+
+[index]
+watcher_polling = false
+ignored_globs = ["**/*.sync-conflict-*"]
+
+[writes]
+cooldown_seconds = 0
+
+[daily_note]
+capture_default_pattern = "A"
+
+[logging]
+log_args = false
+`
+      );
+
+      const server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      const address = server.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const createResponse = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer scope=vault:write",
+          "content-type": "application/json",
+          "mcp-method": "tools/call",
+          "mcp-name": "create_note"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "create",
+          method: "tools/call",
+          params: {
+            name: "create_note",
+            arguments: {
+              path: "Inbox/Written.md",
+              content: "Written from runtime",
+              frontmatter: { source: "test" }
+            }
+          }
+        })
+      });
+      const createBody = (await createResponse.json()) as {
+        result: { structuredContent: { resultSha256: string } };
+      };
+
+      expect(createResponse.status).toBe(200);
+      expect(await readFile(join(vaultPath, "Inbox", "Written.md"), "utf8")).toBe(
+        "---\nsource: test\n---\nWritten from runtime"
+      );
+
+      const replaceResponse = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer scope=vault:write",
+          "content-type": "application/json",
+          "mcp-method": "tools/call",
+          "mcp-name": "replace_note"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "replace",
+          method: "tools/call",
+          params: {
+            name: "replace_note",
+            arguments: {
+              path: "Inbox/Written.md",
+              content: "Replaced from runtime",
+              base_sha256: createBody.result.structuredContent.resultSha256
+            }
+          }
+        })
+      });
+
+      expect(replaceResponse.status).toBe(200);
+      expect(await readFile(join(vaultPath, "Inbox", "Written.md"), "utf8")).toBe(
+        "Replaced from runtime"
+      );
+
+      const audit = new VaultWriteAuditStore({ sqlitePath: auditPath });
+      try {
+        expect(audit.listRecentWrites().map((row) => row.operation)).toEqual([
+          "replace_note",
+          "create_note"
+        ]);
+      } finally {
+        audit.close();
+      }
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

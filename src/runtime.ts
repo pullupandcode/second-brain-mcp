@@ -3,9 +3,12 @@ import path from "node:path";
 
 import type { ServerConfig } from "./config.js";
 import type { ToolHandlerMap } from "./server.js";
+import type { FrontmatterValue } from "./vault/markdown.js";
+import { VaultWriteAuditStore } from "./vault/audit.js";
 import { VaultIndex } from "./vault/index.js";
 import { VaultReader } from "./vault/reader.js";
-import { createVaultReadTools } from "./vault/tools.js";
+import { createVaultReadTools, createVaultWriteTools } from "./vault/tools.js";
+import { VaultWriter } from "./vault/writer.js";
 
 export interface RuntimeToolHandlers {
   handlers: ToolHandlerMap;
@@ -16,6 +19,7 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
   if (config.index.sqlitePath !== ":memory:") {
     await mkdir(path.dirname(config.index.sqlitePath), { recursive: true });
   }
+  await mkdir(config.statePath, { recursive: true });
 
   const reader = new VaultReader({
     vaultRoot: config.vaultPath,
@@ -24,6 +28,14 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
   const index = new VaultIndex({ reader, sqlitePath: config.index.sqlitePath });
   await index.rebuild();
   const readTools = createVaultReadTools(reader, index);
+  const writer = new VaultWriter({
+    vaultRoot: config.vaultPath,
+    cooldownSeconds: config.writes.cooldownSeconds
+  });
+  const auditStore = new VaultWriteAuditStore({
+    sqlitePath: path.join(config.statePath, "write-audit.sqlite")
+  });
+  const writeTools = createVaultWriteTools(writer, auditStore);
 
   return {
     handlers: {
@@ -53,9 +65,29 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
             requireString(arguments_, "notebook"),
             requireString(arguments_, "page_uuid")
           )
-        })
+        }),
+      create_note: async (arguments_) =>
+        structuredResult(
+          await writeTools.create_note(
+            requireString(arguments_, "path"),
+            requireString(arguments_, "content"),
+            optionalFrontmatter(arguments_, "frontmatter")
+          )
+        ),
+      replace_note: async (arguments_) =>
+        structuredResult(
+          await writeTools.replace_note(
+            requireString(arguments_, "path"),
+            requireString(arguments_, "content"),
+            requireString(arguments_, "base_sha256"),
+            optionalFrontmatter(arguments_, "frontmatter")
+          )
+        )
     },
-    close: () => index.close()
+    close: () => {
+      index.close();
+      auditStore.close();
+    }
   };
 }
 
@@ -104,4 +136,32 @@ function optionalRecord(
     throw new Error(`${name} must be an object`);
   }
   return value as Record<string, unknown>;
+}
+
+function optionalFrontmatter(
+  arguments_: Record<string, unknown>,
+  name: string
+): Record<string, FrontmatterValue> | undefined {
+  const record = optionalRecord(arguments_, name);
+  if (record === undefined) {
+    return undefined;
+  }
+  const frontmatter: Record<string, FrontmatterValue> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (isFrontmatterValue(value)) {
+      frontmatter[key] = value;
+      continue;
+    }
+    throw new Error(`${name}.${key} must be a frontmatter value`);
+  }
+  return frontmatter;
+}
+
+function isFrontmatterValue(value: unknown): value is FrontmatterValue {
+  return (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    (Array.isArray(value) && value.every((item) => typeof item === "string"))
+  );
 }
