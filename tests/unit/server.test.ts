@@ -1,8 +1,11 @@
 import { AddressInfo } from "node:net";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { createHttpServer } from "../../src/server.js";
+import { createHttpServer, startHttpServerFromConfigFile } from "../../src/server.js";
 import type { ServerConfig } from "../../src/config.js";
 
 const config: ServerConfig = {
@@ -93,6 +96,52 @@ describe("createHttpServer", () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "not_found" });
+  });
+
+  test("starts an HTTP server from a TOML config file", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-server-"));
+    try {
+      const configPath = join(tempRoot, "config.toml");
+      await writeFile(
+        configPath,
+        `
+listen = "127.0.0.1:0"
+public_base_url = "https://second-brain-mcp.example.com"
+vault_path = "${tempRoot}/vault"
+state_path = "${tempRoot}/state"
+
+[auth]
+audience = "second-brain-mcp"
+trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+
+[index]
+watcher_polling = false
+ignored_globs = ["**/*.sync-conflict-*"]
+
+[writes]
+cooldown_seconds = 0
+
+[daily_note]
+capture_default_pattern = "A"
+
+[logging]
+log_args = false
+`
+      );
+
+      const server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      const address = server.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const health = await fetch(`${baseUrl}/healthz`);
+      expect(health.status).toBe(200);
+      expect(await health.json()).toEqual({ ok: true });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
   });
 });
 

@@ -8,7 +8,7 @@ export { createFrameworkRecordTools } from "./framework/records.js";
 export { composeFrameworkSchemas, parseFrameworkSchema } from "./framework/schema.js";
 export { createFrameworkManagementTools } from "./framework/tools.js";
 export { createOcrTools, OcrJobError, OcrJobQueue } from "./ocr/jobs.js";
-export { createHttpServer } from "./server.js";
+export { createHttpServer, startHttpServerFromConfigFile } from "./server.js";
 export { createToolRegistry, listToolsForScopes } from "./tools/registry.js";
 export { parseMarkdown } from "./vault/markdown.js";
 export { isMarkdownPath, normalizeVaultPath, resolveVaultPath } from "./vault/path.js";

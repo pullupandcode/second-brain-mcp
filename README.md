@@ -26,6 +26,7 @@ This implementation currently includes:
 - Vault writer foundation for atomic creates/replaces, `base_sha256` checks, cooldown conflicts, frontmatter patching, and marker-scoped replacement
 - Primitive write tool adapter with append-only SQLite write audit rows for successful writes
 - Rebuildable SQLite FTS index for search, backlinks, outgoing links, source ID lookup, and conflict listing
+- Config-file based HTTP server startup
 - Minimal HTTP server routes:
   - `GET /healthz`
   - `GET /.well-known/oauth-protected-resource`
@@ -51,5 +52,5 @@ pnpm build
 ## Development
 
 ```bash
-pnpm dev
+pnpm dev -- --config path/to/config.toml
 ```

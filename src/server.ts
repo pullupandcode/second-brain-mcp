@@ -2,7 +2,7 @@ import http, { IncomingMessage, ServerResponse } from "node:http";
 
 import { buildProtectedResourceMetadata } from "./auth/discovery.js";
 import { parseScopes } from "./auth/scopes.js";
-import type { ServerConfig } from "./config.js";
+import { loadConfig, type ServerConfig } from "./config.js";
 import { createToolRegistry, listToolsForScopes, type ToolDefinition } from "./tools/registry.js";
 
 export interface CreateServerOptions {
@@ -16,6 +16,16 @@ export function createHttpServer(options: CreateServerOptions): http.Server {
   return http.createServer((request, response) => {
     void routeRequest(request, response, options.config, tools);
   });
+}
+
+export async function startHttpServerFromConfigFile(configPath: string): Promise<http.Server> {
+  const config = await loadConfig(configPath);
+  const server = createHttpServer({ config });
+  const listen = parseListenAddress(config.listen);
+  await new Promise<void>((resolve) => {
+    server.listen(listen.port, listen.host, resolve);
+  });
+  return server;
 }
 
 async function routeRequest(
@@ -61,6 +71,46 @@ function sendJson(response: ServerResponse, statusCode: number, body: unknown): 
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  console.error("Direct server startup requires config-file loading in a later implementation slice.");
-  process.exitCode = 1;
+  void startServerCli(process.argv.slice(2));
+}
+
+async function startServerCli(args: string[]): Promise<void> {
+  const configPath = parseConfigPathArg(args);
+  if (configPath === undefined) {
+    console.error("Usage: second-brain-mcp --config <config.toml>");
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    const server = await startHttpServerFromConfigFile(configPath);
+    const address = server.address();
+    if (typeof address === "object" && address !== null) {
+      console.error(`second-brain-mcp listening on ${address.address}:${address.port}`);
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}
+
+function parseConfigPathArg(args: string[]): string | undefined {
+  const configIndex = args.indexOf("--config");
+  if (configIndex !== -1) {
+    return args[configIndex + 1];
+  }
+  return args[0];
+}
+
+function parseListenAddress(listen: string): { host: string; port: number } {
+  const separator = listen.lastIndexOf(":");
+  if (separator === -1) {
+    throw new Error("listen must be formatted as host:port");
+  }
+  const host = listen.slice(0, separator);
+  const port = Number(listen.slice(separator + 1));
+  if (host.length === 0 || !Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error("listen must be formatted as host:port");
+  }
+  return { host, port };
 }
