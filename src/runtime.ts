@@ -82,6 +82,23 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
             requireString(arguments_, "base_sha256"),
             optionalFrontmatter(arguments_, "frontmatter")
           )
+        ),
+      update_frontmatter: async (arguments_) =>
+        structuredResult(
+          await writeTools.update_frontmatter(
+            requireString(arguments_, "path"),
+            requireFrontmatter(arguments_, "patch"),
+            requireString(arguments_, "base_sha256")
+          )
+        ),
+      replace_section_by_marker: async (arguments_) =>
+        structuredResult(
+          await writeTools.replace_section_by_marker(
+            requireString(arguments_, "path"),
+            requireString(arguments_, "marker_name"),
+            requireString(arguments_, "content"),
+            requireString(arguments_, "base_sha256")
+          )
         )
     },
     close: () => {
@@ -146,6 +163,28 @@ function optionalFrontmatter(
   if (record === undefined) {
     return undefined;
   }
+  return toFrontmatterRecord(record, name);
+}
+
+function requireFrontmatter(
+  arguments_: Record<string, unknown>,
+  name: string
+): Record<string, FrontmatterValue> {
+  return toFrontmatterRecord(requireRecord(arguments_, name), name);
+}
+
+function requireRecord(arguments_: Record<string, unknown>, name: string): Record<string, unknown> {
+  const value = arguments_[name];
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${name} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function toFrontmatterRecord(
+  record: Record<string, unknown>,
+  name: string
+): Record<string, FrontmatterValue> {
   const frontmatter: Record<string, FrontmatterValue> = {};
   for (const [key, value] of Object.entries(record)) {
     if (isFrontmatterValue(value)) {

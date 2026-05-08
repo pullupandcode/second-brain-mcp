@@ -28,7 +28,7 @@ This implementation currently includes:
 - Rebuildable SQLite FTS index for search, backlinks, outgoing links, source ID lookup, and conflict listing
 - Config-file based HTTP server startup
 - Config-backed read tool runtime wiring for `tools/call`
-- Config-backed write runtime wiring for `create_note` and `replace_note` with audit
+- Config-backed write runtime wiring for `create_note`, `replace_note`, `update_frontmatter`, and `replace_section_by_marker` with audit
 - MCP Streamable HTTP standard header consistency checks for `Mcp-Method` and `Mcp-Name`
 - Minimal HTTP server routes:
   - `GET /healthz`

@@ -506,6 +506,107 @@ log_args = false
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  test("wires config-backed frontmatter and marker write tools into JSON-RPC tools/call", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-write-extensions-"));
+    try {
+      const vaultPath = join(tempRoot, "vault");
+      const statePath = join(tempRoot, "state");
+      const auditPath = join(statePath, "write-audit.sqlite");
+      await mkdir(join(vaultPath, "Inbox"), { recursive: true });
+      await mkdir(statePath, { recursive: true });
+      await writeFile(
+        join(vaultPath, "Inbox", "Section.md"),
+        [
+          "---",
+          "title: Section",
+          "---",
+          "# Section",
+          "",
+          "<!-- mcp:section capture start -->",
+          "old capture",
+          "<!-- mcp:section capture end -->"
+        ].join("\n")
+      );
+      const configPath = join(tempRoot, "config.toml");
+      await writeFile(
+        configPath,
+        `
+listen = "127.0.0.1:0"
+public_base_url = "https://second-brain-mcp.example.com"
+vault_path = "${vaultPath}"
+state_path = "${statePath}"
+
+[auth]
+audience = "second-brain-mcp"
+trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+
+[index]
+watcher_polling = false
+ignored_globs = ["**/*.sync-conflict-*"]
+
+[writes]
+cooldown_seconds = 0
+
+[daily_note]
+capture_default_pattern = "A"
+
+[logging]
+log_args = false
+`
+      );
+
+      const server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      const address = server.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const readBeforeFrontmatter = await callTool(baseUrl, "read_note", {
+        path: "Inbox/Section.md"
+      });
+      const frontmatterResponse = await callTool(baseUrl, "update_frontmatter", {
+        path: "Inbox/Section.md",
+        patch: { status: "reviewed", tags: ["phase-5"] },
+        base_sha256: readBeforeFrontmatter.result.structuredContent.currentSha256
+      });
+
+      expect(frontmatterResponse.response.status).toBe(200);
+      expect(frontmatterResponse.result.structuredContent.path).toBe("Inbox/Section.md");
+      expect(await readFile(join(vaultPath, "Inbox", "Section.md"), "utf8")).toContain(
+        "status: reviewed"
+      );
+
+      const readBeforeMarker = await callTool(baseUrl, "read_note", {
+        path: "Inbox/Section.md"
+      });
+      const markerResponse = await callTool(baseUrl, "replace_section_by_marker", {
+        path: "Inbox/Section.md",
+        marker_name: "capture",
+        content: "new capture",
+        base_sha256: readBeforeMarker.result.structuredContent.currentSha256
+      });
+
+      expect(markerResponse.response.status).toBe(200);
+      expect(markerResponse.result.structuredContent.path).toBe("Inbox/Section.md");
+      expect(await readFile(join(vaultPath, "Inbox", "Section.md"), "utf8")).toContain(
+        "<!-- mcp:section capture start -->\nnew capture\n<!-- mcp:section capture end -->"
+      );
+
+      const audit = new VaultWriteAuditStore({ sqlitePath: auditPath });
+      try {
+        expect(audit.listRecentWrites().map((row) => row.operation)).toEqual([
+          "replace_section_by_marker",
+          "update_frontmatter"
+        ]);
+      } finally {
+        audit.close();
+      }
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 async function startServer(toolHandlers: ToolHandlerMap = {}): Promise<string> {
@@ -518,4 +619,35 @@ async function startServer(toolHandlers: ToolHandlerMap = {}): Promise<string> {
 
   const address = server.address() as AddressInfo;
   return `http://127.0.0.1:${address.port}`;
+}
+
+async function callTool(
+  baseUrl: string,
+  name: string,
+  arguments_: Record<string, unknown>
+): Promise<{
+  response: Response;
+  result: { structuredContent: Record<string, unknown> };
+}> {
+  const response = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      accept: "application/json, text/event-stream",
+      authorization: "Bearer scope=vault:read vault:write",
+      "content-type": "application/json",
+      "mcp-method": "tools/call",
+      "mcp-name": name
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: name,
+      method: "tools/call",
+      params: { name, arguments: arguments_ }
+    })
+  });
+
+  const body = (await response.json()) as {
+    result: { structuredContent: Record<string, unknown> };
+  };
+  return { response, ...body };
 }
