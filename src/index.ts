@@ -73,7 +73,13 @@ export type {
   OcrRenumberInput,
   OcrTools
 } from "./ocr/jobs.js";
-export type { CreateServerOptions } from "./server.js";
+export type {
+  CreateServerOptions,
+  McpTextContent,
+  McpToolResult,
+  ToolHandler,
+  ToolHandlerMap
+} from "./server.js";
 export type { ToolDefinition } from "./tools/registry.js";
 export type {
   VaultWriteAuditStoreOptions,

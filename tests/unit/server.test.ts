@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { createHttpServer, startHttpServerFromConfigFile } from "../../src/server.js";
 import type { ServerConfig } from "../../src/config.js";
+import type { ToolHandlerMap } from "../../src/server.js";
 
 const config: ServerConfig = {
   listen: "127.0.0.1:0",
@@ -129,6 +130,73 @@ describe("createHttpServer", () => {
     expect(names).not.toContain("create_note");
   });
 
+  test("dispatches JSON-RPC tools/call to registered handlers", async () => {
+    const baseUrl = await startServer({
+      read_note: async (arguments_) => ({
+        content: [{ type: "text", text: JSON.stringify(arguments_) }],
+        structuredContent: { ok: true }
+      })
+    });
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:read",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "request-1",
+        method: "tools/call",
+        params: { name: "read_note", arguments: { path: "Inbox/Test.md" } }
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: "request-1",
+      result: {
+        content: [{ type: "text", text: '{"path":"Inbox/Test.md"}' }],
+        structuredContent: { ok: true }
+      }
+    });
+  });
+
+  test("rejects JSON-RPC tools/call without the required scope", async () => {
+    const baseUrl = await startServer({
+      read_note: async () => ({
+        content: [{ type: "text", text: "should not run" }]
+      })
+    });
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:capture",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "request-2",
+        method: "tools/call",
+        params: { name: "read_note", arguments: { path: "Inbox/Test.md" } }
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: "request-2",
+      error: {
+        code: -32003,
+        message: "forbidden_scope"
+      }
+    });
+  });
+
   test("returns JSON-RPC method errors for unsupported MCP methods", async () => {
     const baseUrl = await startServer();
 
@@ -140,16 +208,16 @@ describe("createHttpServer", () => {
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
-        id: "request-1",
-        method: "tools/call",
-        params: { name: "read_note", arguments: {} }
+        id: "request-3",
+        method: "resources/read",
+        params: { uri: "file:///missing.md" }
       })
     });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       jsonrpc: "2.0",
-      id: "request-1",
+      id: "request-3",
       error: {
         code: -32601,
         message: "Method not found"
@@ -204,8 +272,8 @@ log_args = false
   });
 });
 
-async function startServer(): Promise<string> {
-  const server = createHttpServer({ config });
+async function startServer(toolHandlers: ToolHandlerMap = {}): Promise<string> {
+  const server = createHttpServer({ config, toolHandlers });
   servers.push(server);
 
   await new Promise<void>((resolve) => {

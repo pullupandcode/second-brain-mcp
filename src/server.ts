@@ -14,16 +14,32 @@ interface JsonRpcRequest {
   params?: unknown;
 }
 
+export interface McpTextContent {
+  type: "text";
+  text: string;
+}
+
+export interface McpToolResult {
+  content: McpTextContent[];
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+}
+
+export type ToolHandler = (arguments_: Record<string, unknown>) => McpToolResult | Promise<McpToolResult>;
+export type ToolHandlerMap = Partial<Record<string, ToolHandler>>;
+
 export interface CreateServerOptions {
   config: ServerConfig;
   tools?: readonly ToolDefinition[];
+  toolHandlers?: ToolHandlerMap;
 }
 
 export function createHttpServer(options: CreateServerOptions): http.Server {
   const tools = options.tools ?? createToolRegistry();
+  const toolHandlers = options.toolHandlers ?? {};
 
   return http.createServer((request, response) => {
-    void routeRequest(request, response, options.config, tools);
+    void routeRequest(request, response, options.config, tools, toolHandlers);
   });
 }
 
@@ -41,7 +57,8 @@ async function routeRequest(
   request: IncomingMessage,
   response: ServerResponse,
   config: ServerConfig,
-  tools: readonly ToolDefinition[]
+  tools: readonly ToolDefinition[],
+  toolHandlers: ToolHandlerMap
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://localhost");
 
@@ -62,7 +79,7 @@ async function routeRequest(
   }
 
   if (request.method === "POST" && url.pathname === "/mcp") {
-    await handleMcpPost(request, response, tools);
+    await handleMcpPost(request, response, tools, toolHandlers);
     return;
   }
 
@@ -72,7 +89,8 @@ async function routeRequest(
 async function handleMcpPost(
   request: IncomingMessage,
   response: ServerResponse,
-  tools: readonly ToolDefinition[]
+  tools: readonly ToolDefinition[],
+  toolHandlers: ToolHandlerMap
 ): Promise<void> {
   let message: JsonRpcRequest;
   try {
@@ -100,6 +118,11 @@ async function handleMcpPost(
     return;
   }
 
+  if (message.method === "tools/call") {
+    await handleToolCall(request, response, message, tools, toolHandlers);
+    return;
+  }
+
   sendJson(response, 200, {
     jsonrpc: "2.0",
     id: message.id,
@@ -108,6 +131,71 @@ async function handleMcpPost(
       message: "Method not found"
     }
   });
+}
+
+async function handleToolCall(
+  request: IncomingMessage,
+  response: ServerResponse,
+  message: JsonRpcRequest,
+  tools: readonly ToolDefinition[],
+  toolHandlers: ToolHandlerMap
+): Promise<void> {
+  const params = parseToolCallParams(message.params);
+  if (params === undefined) {
+    sendJson(response, 200, jsonRpcError(message.id, -32602, "Invalid params"));
+    return;
+  }
+
+  const tool = tools.find((definition) => definition.name === params.name);
+  const handler = toolHandlers[params.name];
+  if (tool === undefined || handler === undefined) {
+    sendJson(response, 200, jsonRpcError(message.id, -32601, "Method not found"));
+    return;
+  }
+
+  const scopes = parseScopes(extractDevelopmentScopeClaim(request.headers.authorization));
+  if (!scopes.has(tool.requiredScope)) {
+    sendJson(response, 200, jsonRpcError(message.id, -32003, "forbidden_scope"));
+    return;
+  }
+
+  const result = await handler(params.arguments);
+  sendJson(response, 200, {
+    jsonrpc: "2.0",
+    id: message.id,
+    result
+  });
+}
+
+function parseToolCallParams(
+  params: unknown
+): { name: string; arguments: Record<string, unknown> } | undefined {
+  if (typeof params !== "object" || params === null || Array.isArray(params)) {
+    return undefined;
+  }
+  const name = (params as { name?: unknown }).name;
+  if (typeof name !== "string" || name.length === 0) {
+    return undefined;
+  }
+  const arguments_ = (params as { arguments?: unknown }).arguments;
+  if (arguments_ === undefined) {
+    return { name, arguments: {} };
+  }
+  if (typeof arguments_ !== "object" || arguments_ === null || Array.isArray(arguments_)) {
+    return undefined;
+  }
+  return { name, arguments: arguments_ as Record<string, unknown> };
+}
+
+function jsonRpcError(id: JsonRpcId, code: number, message: string): object {
+  return {
+    jsonrpc: "2.0",
+    id,
+    error: {
+      code,
+      message
+    }
+  };
 }
 
 async function readRequestBody(request: IncomingMessage): Promise<string> {
