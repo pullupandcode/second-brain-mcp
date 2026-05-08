@@ -31,6 +31,7 @@ This implementation currently includes:
   - `GET /healthz`
   - `GET /.well-known/oauth-protected-resource`
   - `GET /tools`
+  - `POST /mcp` for JSON-RPC `tools/list`
 
 `GET /tools` currently uses a development bearer token shape for the first vertical slice:
 

@@ -5,6 +5,15 @@ import { parseScopes } from "./auth/scopes.js";
 import { loadConfig, type ServerConfig } from "./config.js";
 import { createToolRegistry, listToolsForScopes, type ToolDefinition } from "./tools/registry.js";
 
+type JsonRpcId = string | number;
+
+interface JsonRpcRequest {
+  jsonrpc: "2.0";
+  id: JsonRpcId;
+  method: string;
+  params?: unknown;
+}
+
 export interface CreateServerOptions {
   config: ServerConfig;
   tools?: readonly ToolDefinition[];
@@ -52,7 +61,79 @@ async function routeRequest(
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/mcp") {
+    await handleMcpPost(request, response, tools);
+    return;
+  }
+
   sendJson(response, 404, { error: "not_found" });
+}
+
+async function handleMcpPost(
+  request: IncomingMessage,
+  response: ServerResponse,
+  tools: readonly ToolDefinition[]
+): Promise<void> {
+  let message: JsonRpcRequest;
+  try {
+    message = parseJsonRpcRequest(await readRequestBody(request));
+  } catch {
+    sendJson(response, 400, {
+      jsonrpc: "2.0",
+      error: {
+        code: -32700,
+        message: "Parse error"
+      }
+    });
+    return;
+  }
+
+  if (message.method === "tools/list") {
+    const scopes = parseScopes(extractDevelopmentScopeClaim(request.headers.authorization));
+    sendJson(response, 200, {
+      jsonrpc: "2.0",
+      id: message.id,
+      result: {
+        tools: listToolsForScopes(scopes, tools)
+      }
+    });
+    return;
+  }
+
+  sendJson(response, 200, {
+    jsonrpc: "2.0",
+    id: message.id,
+    error: {
+      code: -32601,
+      message: "Method not found"
+    }
+  });
+}
+
+async function readRequestBody(request: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function parseJsonRpcRequest(source: string): JsonRpcRequest {
+  const parsed = JSON.parse(source) as unknown;
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed) ||
+    (parsed as { jsonrpc?: unknown }).jsonrpc !== "2.0" ||
+    typeof (parsed as { method?: unknown }).method !== "string"
+  ) {
+    throw new Error("Invalid JSON-RPC request");
+  }
+  const id = (parsed as { id?: unknown }).id;
+  if (typeof id !== "string" && typeof id !== "number") {
+    throw new Error("Invalid JSON-RPC request id");
+  }
+  return parsed as JsonRpcRequest;
 }
 
 function extractDevelopmentScopeClaim(authorization: string | undefined): string | undefined {

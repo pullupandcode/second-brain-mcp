@@ -98,6 +98,65 @@ describe("createHttpServer", () => {
     expect(await response.json()).toEqual({ error: "not_found" });
   });
 
+  test("serves JSON-RPC tools/list over the MCP endpoint", async () => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:read daily:append",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list"
+      })
+    });
+    const body = (await response.json()) as {
+      jsonrpc: string;
+      id: number;
+      result: { tools: Array<{ name: string }> };
+    };
+    const names = body.result.tools.map((tool) => tool.name);
+
+    expect(response.status).toBe(200);
+    expect(body.jsonrpc).toBe("2.0");
+    expect(body.id).toBe(1);
+    expect(names).toContain("read_note");
+    expect(names).toContain("daily_note_append");
+    expect(names).not.toContain("create_note");
+  });
+
+  test("returns JSON-RPC method errors for unsupported MCP methods", async () => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "request-1",
+        method: "tools/call",
+        params: { name: "read_note", arguments: {} }
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: "request-1",
+      error: {
+        code: -32601,
+        message: "Method not found"
+      }
+    });
+  });
+
   test("starts an HTTP server from a TOML config file", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-server-"));
     try {
