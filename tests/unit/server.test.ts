@@ -607,6 +607,175 @@ log_args = false
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  test("wires config-backed framework record tools into JSON-RPC tools/call", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-record-runtime-"));
+    try {
+      const vaultPath = join(tempRoot, "vault");
+      const statePath = join(tempRoot, "state");
+      const auditPath = join(statePath, "write-audit.sqlite");
+      await mkdir(join(vaultPath, "_meta"), { recursive: true });
+      await mkdir(join(vaultPath, "Calendar", "Records", "Captures"), { recursive: true });
+      await mkdir(statePath, { recursive: true });
+      await writeFile(
+        join(vaultPath, "_meta", "framework.yaml"),
+        [
+          "version: 1",
+          "schema_kind: base",
+          "framework: custom",
+          "types:",
+          "  meeting:",
+          "    description: Meeting",
+          "    folder: Calendar/Records/Meetings",
+          "    filename: \"{date:YYYY-MM-DD} [{title}].md\"",
+          "  capture:",
+          "    description: Capture",
+          "    folder: Calendar/Records/Captures",
+          "    filename: \"{date:YYYY-MM-DD HH-mm} [{title}].md\""
+        ].join("\n")
+      );
+      await writeFile(
+        join(vaultPath, "Calendar", "Records", "Captures", "2026-05-08 14-00 [Page 1].md"),
+        [
+          "---",
+          "type: capture",
+          "title: Page 1",
+          "date: 2026-05-08",
+          "source_client: rmocr",
+          "source_id: rmpage:notebook:page-1",
+          "---",
+          "Original OCR"
+        ].join("\n")
+      );
+      const configPath = join(tempRoot, "config.toml");
+      await writeFile(
+        configPath,
+        `
+listen = "127.0.0.1:0"
+public_base_url = "https://second-brain-mcp.example.com"
+vault_path = "${vaultPath}"
+state_path = "${statePath}"
+
+[auth]
+audience = "second-brain-mcp"
+trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+
+[index]
+watcher_polling = false
+ignored_globs = ["**/*.sync-conflict-*"]
+
+[writes]
+cooldown_seconds = 0
+
+[daily_note]
+capture_default_pattern = "A"
+
+[logging]
+log_args = false
+`
+      );
+
+      const server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      const address = server.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const typeResponse = await callTool(baseUrl, "list_record_types", {}, "vault:read");
+
+      expect(typeResponse.response.status).toBe(200);
+      expect(typeResponse.result.structuredContent.recordTypes).toEqual([
+        { name: "capture", folder: "Calendar/Records/Captures", description: "Capture" },
+        { name: "meeting", folder: "Calendar/Records/Meetings", description: "Meeting" }
+      ]);
+
+      const createResponse = await callTool(
+        baseUrl,
+        "create_record",
+        {
+          type: "meeting",
+          title: "Planning",
+          date: "2026-05-08T15:30:00Z",
+          body: "Decision log",
+          fields: { attendees: ["[[Ada]]"] }
+        },
+        "vault:write"
+      );
+
+      expect(createResponse.response.status).toBe(200);
+      expect(createResponse.result.structuredContent.path).toBe(
+        "Calendar/Records/Meetings/2026-05-08 [Planning].md"
+      );
+      const meetingPath = join(
+        vaultPath,
+        "Calendar",
+        "Records",
+        "Meetings",
+        "2026-05-08 [Planning].md"
+      );
+      expect(await readFile(meetingPath, "utf8")).toContain("Decision log");
+
+      const captureResponse = await callTool(
+        baseUrl,
+        "capture_for_date",
+        {
+          content: "Remember the MCP runtime.",
+          date: "2026-05-08T16:45:00Z",
+          source_client: "codex",
+          source_id: "msg-123",
+          capture_type: "idea",
+          title: "Runtime capture"
+        },
+        "vault:capture"
+      );
+
+      expect(captureResponse.response.status).toBe(200);
+      expect(captureResponse.result.structuredContent.path).toBe(
+        "Calendar/Records/Captures/2026-05-08 16-45 [Runtime capture].md"
+      );
+
+      const replaceResponse = await callTool(
+        baseUrl,
+        "inbox_capture",
+        {
+          content: "Updated OCR",
+          date: "2026-05-08T17:00:00Z",
+          source_client: "rmocr",
+          source_id: "rmpage:notebook:page-1",
+          strategy: "replace_by_source_id",
+          title: "Page 1 revised"
+        },
+        "vault:capture"
+      );
+
+      expect(replaceResponse.response.status).toBe(200);
+      expect(replaceResponse.result.structuredContent.path).toBe(
+        "Calendar/Records/Captures/2026-05-08 14-00 [Page 1].md"
+      );
+      const replacedCapturePath = join(
+        vaultPath,
+        "Calendar",
+        "Records",
+        "Captures",
+        "2026-05-08 14-00 [Page 1].md"
+      );
+      expect(await readFile(replacedCapturePath, "utf8")).toContain("Updated OCR");
+
+      const audit = new VaultWriteAuditStore({ sqlitePath: auditPath });
+      try {
+        expect(audit.listRecentWrites().map((row) => row.operation)).toEqual([
+          "replace_note",
+          "create_note",
+          "create_note"
+        ]);
+      } finally {
+        audit.close();
+      }
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 async function startServer(toolHandlers: ToolHandlerMap = {}): Promise<string> {
@@ -624,7 +793,8 @@ async function startServer(toolHandlers: ToolHandlerMap = {}): Promise<string> {
 async function callTool(
   baseUrl: string,
   name: string,
-  arguments_: Record<string, unknown>
+  arguments_: Record<string, unknown>,
+  scopes = "vault:read vault:write"
 ): Promise<{
   response: Response;
   result: { structuredContent: Record<string, unknown> };
@@ -633,7 +803,7 @@ async function callTool(
     method: "POST",
     headers: {
       accept: "application/json, text/event-stream",
-      authorization: "Bearer scope=vault:read vault:write",
+      authorization: `Bearer scope=${scopes}`,
       "content-type": "application/json",
       "mcp-method": "tools/call",
       "mcp-name": name

@@ -2,6 +2,14 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import type { ServerConfig } from "./config.js";
+import { createFrameworkRecordTools } from "./framework/records.js";
+import type {
+  CaptureForDateInput,
+  CreateRecordInput,
+  InboxCaptureInput
+} from "./framework/records.js";
+import { FrameworkRegistryStore } from "./framework/registry.js";
+import { createFrameworkManagementTools } from "./framework/tools.js";
 import type { ToolHandlerMap } from "./server.js";
 import type { FrontmatterValue } from "./vault/markdown.js";
 import { VaultWriteAuditStore } from "./vault/audit.js";
@@ -36,6 +44,18 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
     sqlitePath: path.join(config.statePath, "write-audit.sqlite")
   });
   const writeTools = createVaultWriteTools(writer, auditStore);
+  const frameworkRegistry = new FrameworkRegistryStore({ vaultRoot: config.vaultPath });
+  const frameworkManagementTools = createFrameworkManagementTools({
+    reader,
+    registry: frameworkRegistry
+  });
+  const frameworkRecordTools = async () =>
+    createFrameworkRecordTools({
+      schema: await frameworkManagementTools.framework_compose(),
+      reader,
+      index,
+      writeTools
+    });
 
   return {
     handlers: {
@@ -99,7 +119,47 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
             requireString(arguments_, "content"),
             requireString(arguments_, "base_sha256")
           )
-        )
+        ),
+      create_record: async (arguments_) => {
+        const input: CreateRecordInput = {
+          type: requireString(arguments_, "type"),
+          title: requireString(arguments_, "title")
+        };
+        assignOptionalString(input, "date", optionalString(arguments_, "date"));
+        assignOptionalString(input, "body", optionalString(arguments_, "body"));
+        assignOptionalRecord(input, "fields", optionalFrontmatter(arguments_, "fields"));
+        return structuredResult(await (await frameworkRecordTools()).create_record(input));
+      },
+      inbox_capture: async (arguments_) => {
+        const input: InboxCaptureInput = {
+          content: requireString(arguments_, "content"),
+          sourceClient: requireString(arguments_, "source_client")
+        };
+        assignOptionalString(input, "date", optionalString(arguments_, "date"));
+        assignOptionalString(input, "sourceId", optionalString(arguments_, "source_id"));
+        assignOptionalString(input, "captureType", optionalString(arguments_, "capture_type"));
+        assignOptionalString(input, "title", optionalString(arguments_, "title"));
+        const strategy = optionalCaptureStrategy(arguments_, "strategy");
+        if (strategy !== undefined) {
+          input.strategy = strategy;
+        }
+        return structuredResult(await (await frameworkRecordTools()).inbox_capture(input));
+      },
+      capture_for_date: async (arguments_) => {
+        const input: CaptureForDateInput = {
+          content: requireString(arguments_, "content"),
+          sourceClient: requireString(arguments_, "source_client")
+        };
+        assignOptionalString(input, "date", optionalString(arguments_, "date"));
+        assignOptionalString(input, "sourceId", optionalString(arguments_, "source_id"));
+        assignOptionalString(input, "captureType", optionalString(arguments_, "capture_type"));
+        assignOptionalString(input, "title", optionalString(arguments_, "title"));
+        return structuredResult(await (await frameworkRecordTools()).capture_for_date(input));
+      },
+      list_record_types: async () =>
+        structuredResult({
+          recordTypes: (await frameworkRecordTools()).list_record_types()
+        })
     },
     close: () => {
       index.close();
@@ -130,6 +190,37 @@ function requireString(arguments_: Record<string, unknown>, name: string): strin
   return value;
 }
 
+function assignOptionalString<T extends object, K extends keyof T>(
+  target: T,
+  key: K,
+  value: string | undefined
+): void {
+  if (value !== undefined) {
+    target[key] = value as T[K];
+  }
+}
+
+function assignOptionalRecord<T extends object, K extends keyof T>(
+  target: T,
+  key: K,
+  value: Record<string, FrontmatterValue> | undefined
+): void {
+  if (value !== undefined) {
+    target[key] = value as T[K];
+  }
+}
+
+function optionalString(arguments_: Record<string, unknown>, name: string): string | undefined {
+  const value = arguments_[name];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new Error(`${name} must be a string`);
+  }
+  return value;
+}
+
 function optionalBoolean(arguments_: Record<string, unknown>, name: string): boolean | undefined {
   const value = arguments_[name];
   if (value === undefined) {
@@ -153,6 +244,17 @@ function optionalRecord(
     throw new Error(`${name} must be an object`);
   }
   return value as Record<string, unknown>;
+}
+
+function optionalCaptureStrategy(
+  arguments_: Record<string, unknown>,
+  name: string
+): "create" | "replace_by_source_id" | undefined {
+  const value = optionalString(arguments_, name);
+  if (value === undefined || value === "create" || value === "replace_by_source_id") {
+    return value;
+  }
+  throw new Error(`${name} must be create or replace_by_source_id`);
 }
 
 function optionalFrontmatter(
