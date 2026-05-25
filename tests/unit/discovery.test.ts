@@ -27,6 +27,9 @@ const config: ServerConfig = {
   dailyNote: {
     captureDefaultPattern: "B"
   },
+  ocr: {
+    enabled: false
+  },
   logging: {
     logArgs: false
   }

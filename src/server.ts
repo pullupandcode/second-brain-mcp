@@ -47,7 +47,11 @@ export function createHttpServer(options: CreateServerOptions): http.Server {
 export async function startHttpServerFromConfigFile(configPath: string): Promise<http.Server> {
   const config = await loadConfig(configPath);
   const runtime = await createRuntimeToolHandlers(config);
-  const server = createHttpServer({ config, toolHandlers: runtime.handlers });
+  const server = createHttpServer({
+    config,
+    tools: createToolRegistry({ ocrEnabled: config.ocr.enabled }),
+    toolHandlers: runtime.handlers
+  });
   server.on("close", () => runtime.close());
   const listen = parseListenAddress(config.listen);
   await new Promise<void>((resolve) => {

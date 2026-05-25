@@ -2,6 +2,12 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import type { ServerConfig } from "./config.js";
+import { createDailyNoteTools } from "./framework/daily.js";
+import type {
+  DailyNoteAppendInput,
+  DailyNoteConfig,
+  DailyNoteRepairMarkersInput
+} from "./framework/daily.js";
 import { createFrameworkRecordTools } from "./framework/records.js";
 import type {
   CaptureForDateInput,
@@ -9,8 +15,17 @@ import type {
   InboxCaptureInput
 } from "./framework/records.js";
 import { FrameworkRegistryStore } from "./framework/registry.js";
+import type { EffectiveFrameworkSchema } from "./framework/schema.js";
 import { createFrameworkManagementTools } from "./framework/tools.js";
+import type {
+  FrameworkInitInput,
+  FrameworkRegisterInput,
+  FrameworkUnregisterInput
+} from "./framework/tools.js";
+import { createOcrTools, OcrJobQueue } from "./ocr/jobs.js";
+import type { OcrNotebookInput } from "./ocr/jobs.js";
 import type { ToolHandlerMap } from "./server.js";
+import type { SearchResult } from "./vault/index.js";
 import type { FrontmatterValue } from "./vault/markdown.js";
 import { VaultWriteAuditStore } from "./vault/audit.js";
 import { VaultIndex } from "./vault/index.js";
@@ -44,6 +59,11 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
     sqlitePath: path.join(config.statePath, "write-audit.sqlite")
   });
   const writeTools = createVaultWriteTools(writer, auditStore);
+  const dailyNoteTools = createDailyNoteTools({
+    reader,
+    writeTools,
+    config: defaultDailyNoteConfig()
+  });
   const frameworkRegistry = new FrameworkRegistryStore({ vaultRoot: config.vaultPath });
   const frameworkManagementTools = createFrameworkManagementTools({
     reader,
@@ -56,6 +76,7 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
       index,
       writeTools
     });
+  const ocrTools = config.ocr.enabled ? createOcrTools(new OcrJobQueue()) : undefined;
 
   return {
     handlers: {
@@ -86,6 +107,28 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
             requireString(arguments_, "page_uuid")
           )
         }),
+      daily_note_get: async (arguments_) => {
+        const date = optionalString(arguments_, "date");
+        return structuredResult(
+          await dailyNoteTools.daily_note_get(date === undefined ? {} : { date })
+        );
+      },
+      daily_note_append: async (arguments_) => {
+        const input: DailyNoteAppendInput = {
+          content: requireString(arguments_, "content"),
+          baseSha256: requireString(arguments_, "base_sha256")
+        };
+        assignOptionalString(input, "date", optionalString(arguments_, "date"));
+        assignOptionalString(input, "section", optionalString(arguments_, "section"));
+        return structuredResult(await dailyNoteTools.daily_note_append(input));
+      },
+      daily_note_repair_markers: async (arguments_) => {
+        const input: DailyNoteRepairMarkersInput = {
+          baseSha256: requireString(arguments_, "base_sha256")
+        };
+        assignOptionalString(input, "date", optionalString(arguments_, "date"));
+        return structuredResult(await dailyNoteTools.daily_note_repair_markers(input));
+      },
       create_note: async (arguments_) =>
         structuredResult(
           await writeTools.create_note(
@@ -159,12 +202,135 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
       list_record_types: async () =>
         structuredResult({
           recordTypes: (await frameworkRecordTools()).list_record_types()
-        })
+        }),
+      find_maps: async (arguments_) =>
+        structuredResult({
+          maps: findMaps(
+            index,
+            await frameworkManagementTools.framework_compose(),
+            optionalString(arguments_, "topic")
+          )
+        }),
+      get_vault_structure: async () =>
+        structuredResult({
+          folders: (await readTools.list_folder("", false)).sort((left, right) =>
+            left.path.localeCompare(right.path)
+          ),
+          recordTypes: (await frameworkRecordTools()).list_record_types()
+        }),
+      framework_init: async (arguments_) => {
+        const input: FrameworkInitInput = {
+          framework: requireFrameworkPreset(arguments_, "framework")
+        };
+        assignOptionalString(input, "outputPath", optionalString(arguments_, "output_path"));
+        const mode = optionalFrameworkInitMode(arguments_, "mode");
+        if (mode !== undefined) {
+          input.mode = mode;
+        }
+        return structuredResult(await frameworkManagementTools.framework_init(input));
+      },
+      framework_register: async (arguments_) => {
+        const input: FrameworkRegisterInput = {
+          name: requireString(arguments_, "name"),
+          path: requireString(arguments_, "path")
+        };
+        const priority = optionalInteger(arguments_, "priority");
+        if (priority !== undefined) {
+          input.priority = priority;
+        }
+        return structuredResult(await frameworkManagementTools.framework_register(input));
+      },
+      framework_unregister: async (arguments_) => {
+        const input: FrameworkUnregisterInput = {
+          name: requireString(arguments_, "name")
+        };
+        return structuredResult(await frameworkManagementTools.framework_unregister(input));
+      },
+      framework_list: async () => structuredResult(await frameworkManagementTools.framework_list()),
+      framework_reload: async () =>
+        structuredResult(await frameworkManagementTools.framework_reload()),
+      framework_compose: async () =>
+        structuredResult(await frameworkManagementTools.framework_compose()),
+      ...(ocrTools === undefined
+        ? {}
+        : {
+            ocr_notebook: (arguments_) => {
+              const input: OcrNotebookInput = {
+                identifier: requireString(arguments_, "identifier")
+              };
+              const pages = optionalIntegerArray(arguments_, "pages");
+              if (pages !== undefined) {
+                input.pages = pages;
+              }
+              const force = optionalBoolean(arguments_, "force");
+              if (force !== undefined) {
+                input.force = force;
+              }
+              return structuredResult(ocrTools.ocr_notebook(input));
+            },
+            ocr_status: (arguments_) =>
+              structuredResult(ocrTools.ocr_status(requireString(arguments_, "job_id"))),
+            ocr_renumber_notebook: (arguments_) =>
+              structuredResult(
+                ocrTools.ocr_renumber_notebook(requireString(arguments_, "notebook_id"))
+              )
+          })
     },
     close: () => {
       index.close();
       auditStore.close();
     }
+  };
+}
+
+function findMaps(
+  index: VaultIndex,
+  schema: EffectiveFrameworkSchema,
+  topic: string | undefined
+): SearchResult[] {
+  const query = topic ?? "";
+  const byPath = new Map<string, SearchResult>();
+  for (const folder of mapFolders(schema)) {
+    for (const result of index.search(query, { folder })) {
+      byPath.set(result.path, result);
+    }
+  }
+  return [...byPath.values()].sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function mapFolders(schema: EffectiveFrameworkSchema): string[] {
+  const folders = new Set<string>();
+  for (const [name, definition] of Object.entries(schema.types)) {
+    const searchable = `${name} ${definition.description ?? ""} ${definition.folder}`.toLowerCase();
+    if (searchable.includes("map") || searchable.includes("index")) {
+      folders.add(definition.folder);
+    }
+  }
+  return [...folders];
+}
+
+function defaultDailyNoteConfig(): DailyNoteConfig {
+  return {
+    path: "Calendar/Days/{date:YYYY-MM-DD}.md",
+    template: "x/Templates/Daily Template.md",
+    sections: [
+      {
+        name: "agenda",
+        markerName: "agenda",
+        writable: false
+      },
+      {
+        name: "daily-log",
+        markerName: "daily-captures",
+        writable: true,
+        defaultForAppend: true
+      },
+      {
+        name: "last-light",
+        markerName: "last-light-summary",
+        writable: true
+      }
+    ]
   };
 }
 
@@ -230,6 +396,56 @@ function optionalBoolean(arguments_: Record<string, unknown>, name: string): boo
     throw new Error(`${name} must be a boolean`);
   }
   return value;
+}
+
+function optionalInteger(arguments_: Record<string, unknown>, name: string): number | undefined {
+  const value = arguments_[name];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new Error(`${name} must be an integer`);
+  }
+  return value;
+}
+
+function optionalIntegerArray(
+  arguments_: Record<string, unknown>,
+  name: string
+): number[] | undefined {
+  const value = arguments_[name];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    !Array.isArray(value) ||
+    value.some((item) => typeof item !== "number" || !Number.isInteger(item))
+  ) {
+    throw new Error(`${name} must be an array of integers`);
+  }
+  return value;
+}
+
+function requireFrameworkPreset(
+  arguments_: Record<string, unknown>,
+  name: string
+): "lyt" | "para" | "zettel" {
+  const value = requireString(arguments_, name);
+  if (value === "lyt" || value === "para" || value === "zettel") {
+    return value;
+  }
+  throw new Error(`${name} must be lyt, para, or zettel`);
+}
+
+function optionalFrameworkInitMode(
+  arguments_: Record<string, unknown>,
+  name: string
+): "create" | "overwrite" | undefined {
+  const value = optionalString(arguments_, name);
+  if (value === undefined || value === "create" || value === "overwrite") {
+    return value;
+  }
+  throw new Error(`${name} must be create or overwrite`);
 }
 
 function optionalRecord(

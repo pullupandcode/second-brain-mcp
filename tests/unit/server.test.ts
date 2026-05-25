@@ -34,6 +34,9 @@ const config: ServerConfig = {
   dailyNote: {
     captureDefaultPattern: "B"
   },
+  ocr: {
+    enabled: false
+  },
   logging: {
     logArgs: false
   }
@@ -772,6 +775,413 @@ log_args = false
       } finally {
         audit.close();
       }
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("wires config-backed framework management tools into JSON-RPC tools/call", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-framework-runtime-"));
+    try {
+      const vaultPath = join(tempRoot, "vault");
+      const statePath = join(tempRoot, "state");
+      await mkdir(join(vaultPath, "_meta", "overlays"), { recursive: true });
+      await mkdir(statePath, { recursive: true });
+      await writeFile(
+        join(vaultPath, "_meta", "overlays", "work.yaml"),
+        [
+          "version: 1",
+          "schema_kind: overlay",
+          "name: work",
+          "types:",
+          "  decision:",
+          "    description: Decision",
+          "    folder: Calendar/Records/Decisions",
+          "    filename: \"{date:YYYY-MM-DD} [{title}].md\""
+        ].join("\n")
+      );
+      const configPath = join(tempRoot, "config.toml");
+      await writeFile(
+        configPath,
+        `
+listen = "127.0.0.1:0"
+public_base_url = "https://second-brain-mcp.example.com"
+vault_path = "${vaultPath}"
+state_path = "${statePath}"
+
+[auth]
+audience = "second-brain-mcp"
+trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+
+[index]
+watcher_polling = false
+ignored_globs = ["**/*.sync-conflict-*"]
+
+[writes]
+cooldown_seconds = 0
+
+[daily_note]
+capture_default_pattern = "A"
+
+[logging]
+log_args = false
+`
+      );
+
+      const server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      const address = server.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const initResponse = await callTool(
+        baseUrl,
+        "framework_init",
+        { framework: "lyt" },
+        "admin"
+      );
+
+      expect(initResponse.response.status).toBe(200);
+      expect(initResponse.result.structuredContent).toMatchObject({
+        path: "_meta/framework.yaml",
+        framework: "lyt",
+        created: true,
+        overwritten: false
+      });
+
+      const registerResponse = await callTool(
+        baseUrl,
+        "framework_register",
+        { name: "work", path: "_meta/overlays/work.yaml", priority: 5 },
+        "admin"
+      );
+
+      expect(registerResponse.response.status).toBe(200);
+      expect(registerResponse.result.structuredContent.result).toEqual([
+        {
+          name: "work",
+          path: "_meta/overlays/work.yaml",
+          priority: 5,
+          status: "registered"
+        }
+      ]);
+
+      const composeResponse = await callTool(baseUrl, "framework_compose", {}, "admin");
+
+      expect(composeResponse.response.status).toBe(200);
+      expect(composeResponse.result.structuredContent.types).toMatchObject({
+        decision: {
+          description: "Decision",
+          folder: "Calendar/Records/Decisions"
+        }
+      });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("wires config-backed OCR tools into JSON-RPC tools/call when enabled", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-ocr-runtime-"));
+    try {
+      const vaultPath = join(tempRoot, "vault");
+      const statePath = join(tempRoot, "state");
+      await mkdir(vaultPath, { recursive: true });
+      await mkdir(statePath, { recursive: true });
+      const configPath = join(tempRoot, "config.toml");
+      await writeFile(
+        configPath,
+        `
+listen = "127.0.0.1:0"
+public_base_url = "https://second-brain-mcp.example.com"
+vault_path = "${vaultPath}"
+state_path = "${statePath}"
+
+[auth]
+audience = "second-brain-mcp"
+trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+
+[index]
+watcher_polling = false
+ignored_globs = ["**/*.sync-conflict-*"]
+
+[writes]
+cooldown_seconds = 0
+
+[daily_note]
+capture_default_pattern = "A"
+
+[ocr]
+enabled = true
+
+[logging]
+log_args = false
+`
+      );
+
+      const server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      const address = server.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const listResponse = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer scope=admin",
+          "content-type": "application/json",
+          "mcp-method": "tools/list"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "ocr-list",
+          method: "tools/list"
+        })
+      });
+      const listBody = (await listResponse.json()) as {
+        result: { tools: Array<{ name: string }> };
+      };
+
+      expect(listResponse.status).toBe(200);
+      expect(listBody.result.tools.map((tool) => tool.name)).toContain("ocr_notebook");
+
+      const queueResponse = await callTool(
+        baseUrl,
+        "ocr_notebook",
+        { identifier: "rmnotebook:abc", pages: [1, 2], force: true },
+        "admin"
+      );
+
+      expect(queueResponse.response.status).toBe(200);
+      expect(queueResponse.result.structuredContent).toMatchObject({
+        state: "queued",
+        type: "notebook"
+      });
+      expect(typeof queueResponse.result.structuredContent.job_id).toBe("string");
+
+      const statusResponse = await callTool(
+        baseUrl,
+        "ocr_status",
+        { job_id: queueResponse.result.structuredContent.job_id },
+        "admin"
+      );
+
+      expect(statusResponse.response.status).toBe(200);
+      expect(statusResponse.result.structuredContent).toMatchObject({
+        state: "queued",
+        type: "notebook",
+        input: {
+          identifier: "rmnotebook:abc",
+          pages: [1, 2],
+          force: true
+        }
+      });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("wires config-backed daily note tools into JSON-RPC tools/call", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-daily-runtime-"));
+    try {
+      const vaultPath = join(tempRoot, "vault");
+      const statePath = join(tempRoot, "state");
+      await mkdir(join(vaultPath, "Calendar", "Days"), { recursive: true });
+      await mkdir(join(vaultPath, "x", "Templates"), { recursive: true });
+      await mkdir(statePath, { recursive: true });
+      await writeFile(
+        join(vaultPath, "x", "Templates", "Daily Template.md"),
+        [
+          "# today's agenda",
+          "<!-- mcp:section agenda start -->",
+          "<!-- mcp:section agenda end -->",
+          "",
+          "# daily log",
+          "<!-- mcp:section daily-captures start -->",
+          "<!-- mcp:section daily-captures end -->",
+          "",
+          "# last light",
+          "<!-- mcp:section last-light-summary start -->",
+          "<!-- mcp:section last-light-summary end -->"
+        ].join("\n")
+      );
+      const configPath = join(tempRoot, "config.toml");
+      await writeFile(
+        configPath,
+        `
+listen = "127.0.0.1:0"
+public_base_url = "https://second-brain-mcp.example.com"
+vault_path = "${vaultPath}"
+state_path = "${statePath}"
+
+[auth]
+audience = "second-brain-mcp"
+trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+
+[index]
+watcher_polling = false
+ignored_globs = ["**/*.sync-conflict-*"]
+
+[writes]
+cooldown_seconds = 0
+
+[daily_note]
+capture_default_pattern = "A"
+
+[logging]
+log_args = false
+`
+      );
+
+      const server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      const address = server.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const getResponse = await callTool(
+        baseUrl,
+        "daily_note_get",
+        { date: "2026-05-25T09:30:00Z" },
+        "vault:read"
+      );
+
+      expect(getResponse.response.status).toBe(200);
+      expect(getResponse.result.structuredContent.path).toBe("Calendar/Days/2026-05-25.md");
+      expect(await readFile(join(vaultPath, "Calendar", "Days", "2026-05-25.md"), "utf8"))
+        .toContain("<!-- mcp:section daily-captures start -->");
+
+      const appendResponse = await callTool(
+        baseUrl,
+        "daily_note_append",
+        {
+          date: "2026-05-25T09:30:00Z",
+          section: "daily-log",
+          content: "- captured through runtime",
+          base_sha256: getResponse.result.structuredContent.currentSha256
+        },
+        "daily:append"
+      );
+
+      expect(appendResponse.response.status).toBe(200);
+      expect(await readFile(join(vaultPath, "Calendar", "Days", "2026-05-25.md"), "utf8"))
+        .toContain(
+          "<!-- mcp:section daily-captures start -->\n- captured through runtime\n<!-- mcp:section daily-captures end -->"
+        );
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("wires config-backed map and structure tools into JSON-RPC tools/call", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-structure-runtime-"));
+    try {
+      const vaultPath = join(tempRoot, "vault");
+      const statePath = join(tempRoot, "state");
+      await mkdir(join(vaultPath, "_meta"), { recursive: true });
+      await mkdir(join(vaultPath, "Atlas", "Maps"), { recursive: true });
+      await mkdir(join(vaultPath, "Calendar", "Records", "Captures"), { recursive: true });
+      await mkdir(statePath, { recursive: true });
+      await writeFile(
+        join(vaultPath, "_meta", "framework.yaml"),
+        [
+          "version: 1",
+          "schema_kind: base",
+          "framework: custom",
+          "types:",
+          "  map:",
+          "    description: Map of content",
+          "    folder: Atlas/Maps",
+          "    filename: \"{title}.md\"",
+          "  capture:",
+          "    description: Capture",
+          "    folder: Calendar/Records/Captures",
+          "    filename: \"{title}.md\""
+        ].join("\n")
+      );
+      await writeFile(
+        join(vaultPath, "Atlas", "Maps", "Home.md"),
+        [
+          "---",
+          "tags: [map]",
+          "---",
+          "# Home",
+          "",
+          "Alpaca planning hub."
+        ].join("\n")
+      );
+      await writeFile(
+        join(vaultPath, "Atlas", "Maps", "People.md"),
+        "# People\n\nRelationship index.\n"
+      );
+      const configPath = join(tempRoot, "config.toml");
+      await writeFile(
+        configPath,
+        `
+listen = "127.0.0.1:0"
+public_base_url = "https://second-brain-mcp.example.com"
+vault_path = "${vaultPath}"
+state_path = "${statePath}"
+
+[auth]
+audience = "second-brain-mcp"
+trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+
+[index]
+watcher_polling = false
+ignored_globs = ["**/*.sync-conflict-*"]
+
+[writes]
+cooldown_seconds = 0
+
+[daily_note]
+capture_default_pattern = "A"
+
+[logging]
+log_args = false
+`
+      );
+
+      const server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      const address = server.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${address.port}`;
+
+      const mapsResponse = await callTool(
+        baseUrl,
+        "find_maps",
+        { topic: "alpaca" },
+        "vault:read"
+      );
+
+      expect(mapsResponse.response.status).toBe(200);
+      expect(mapsResponse.result.structuredContent.maps).toEqual([
+        {
+          path: "Atlas/Maps/Home.md",
+          title: "Home",
+          tags: ["map"],
+          aliases: [],
+          currentSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+        }
+      ]);
+
+      const structureResponse = await callTool(baseUrl, "get_vault_structure", {}, "vault:read");
+
+      expect(structureResponse.response.status).toBe(200);
+      expect(structureResponse.result.structuredContent.folders).toEqual([
+        { path: "_meta", type: "directory" },
+        { path: "Atlas", type: "directory" },
+        { path: "Calendar", type: "directory" }
+      ]);
+      expect(structureResponse.result.structuredContent.recordTypes).toEqual([
+        { name: "capture", folder: "Calendar/Records/Captures", description: "Capture" },
+        { name: "map", folder: "Atlas/Maps", description: "Map of content" }
+      ]);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

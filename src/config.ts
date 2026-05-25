@@ -27,6 +27,9 @@ export interface ServerConfig {
   dailyNote: {
     captureDefaultPattern: CaptureDefaultPattern;
   };
+  ocr: {
+    enabled: boolean;
+  };
   logging: {
     logArgs: boolean;
   };
@@ -53,6 +56,9 @@ interface RawConfig {
   };
   daily_note?: {
     capture_default_pattern?: unknown;
+  };
+  ocr?: {
+    enabled?: unknown;
   };
   logging?: {
     log_args?: unknown;
@@ -118,6 +124,9 @@ export function parseConfig(source: string): ServerConfig {
     },
     dailyNote: {
       captureDefaultPattern
+    },
+    ocr: {
+      enabled: raw.ocr === undefined ? false : requireBoolean(raw.ocr.enabled, "ocr.enabled")
     },
     logging: {
       logArgs: requireBoolean(logging.log_args, "logging.log_args")

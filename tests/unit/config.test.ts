@@ -53,7 +53,19 @@ describe("parseConfig", () => {
     expect(config.index.ignoredGlobs).toEqual([".second-brain/workspace*", ".trash/**"]);
     expect(config.writes.cooldownSeconds).toBe(2);
     expect(config.dailyNote.captureDefaultPattern).toBe("B");
+    expect(config.ocr.enabled).toBe(false);
     expect(config.logging.logArgs).toBe(false);
+  });
+
+  test("enables optional OCR tools from config", () => {
+    const config = parseConfig(
+      validConfig.replace(
+        "[logging]\nlog_args = false",
+        "[ocr]\nenabled = true\n\n[logging]\nlog_args = false"
+      )
+    );
+
+    expect(config.ocr.enabled).toBe(true);
   });
 
   test("allows an explicit index sqlite path", () => {
