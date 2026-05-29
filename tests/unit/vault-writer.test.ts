@@ -29,7 +29,7 @@ describe("VaultWriter", () => {
     expect(result.path).toBe("Notes/New.md");
     expect(result.resultSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(await readFile(join(vaultRoot, "Notes", "New.md"), "utf8")).toBe(
-      "---\ntags: [test]\nrank: 1\n---\nHello"
+      '---\ntags: ["test"]\nrank: 1\n---\nHello'
     );
   });
 
@@ -95,7 +95,7 @@ describe("VaultWriter", () => {
     await writer.updateFrontmatter("Notes/New.md", { tags: ["new"], status: "active" }, base.currentSha256);
 
     expect(await readFile(join(vaultRoot, "Notes", "New.md"), "utf8")).toBe(
-      "---\ntags: [new]\nstatus: active\n---\n# Body\n"
+      '---\ntags: ["new"]\nstatus: active\n---\n# Body\n'
     );
   });
 

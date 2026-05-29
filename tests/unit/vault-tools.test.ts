@@ -79,7 +79,7 @@ describe("createVaultWriteTools", () => {
 
     const created = await tools.create_note("Inbox/New.md", "Hello", { tags: ["capture"] });
     expect(await readFile(join(vaultRoot, "Inbox", "New.md"), "utf8")).toBe(
-      "---\ntags: [capture]\n---\nHello"
+      '---\ntags: ["capture"]\n---\nHello'
     );
 
     const replaced = await tools.replace_note("Inbox/New.md", "Updated", created.resultSha256);

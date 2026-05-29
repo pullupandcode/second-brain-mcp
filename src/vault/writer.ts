@@ -205,9 +205,13 @@ function serializeFrontmatter(frontmatter: Record<string, FrontmatterValue>): st
 
 function serializeFrontmatterValue(value: FrontmatterValue): string {
   if (Array.isArray(value)) {
-    return `[${value.join(", ")}]`;
+    return `[${value.map(quoteArrayItem).join(", ")}]`;
   }
   return String(value);
+}
+
+function quoteArrayItem(value: string): string {
+  return JSON.stringify(value);
 }
 
 async function atomicWrite(absolutePath: string, content: string): Promise<void> {

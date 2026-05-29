@@ -52,7 +52,7 @@ describe("createFrameworkRecordTools", () => {
       date: "2026-05-07T15:30:00Z",
       fields: {
         scheduled: "2026-05-07 03:30 PM",
-        attendees: ["[[Ada]]", "[[Grace]]"]
+        attendees: ["Ada", "[[Grace]]"]
       },
       body: "Decision log"
     });
@@ -65,7 +65,7 @@ describe("createFrameworkRecordTools", () => {
         "title: Planning",
         "date: 2026-05-07",
         "scheduled: 2026-05-07 03:30 PM",
-        "attendees: [[[Ada]], [[Grace]]]",
+        'attendees: ["[[Ada]]", "[[Grace]]"]',
         "---",
         "# Meeting Notes",
         "",

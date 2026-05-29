@@ -145,8 +145,34 @@ async function createRecord(
     type: input.type,
     title: input.title,
     date: formatDate(date, "YYYY-MM-DD"),
-    ...(input.fields ?? {})
+    ...normalizeRecordFields(input)
   });
+}
+
+function normalizeRecordFields(input: CreateRecordInput): Record<string, FrontmatterValue> {
+  const fields = { ...(input.fields ?? {}) };
+  if (input.type === "meeting" && fields.attendees !== undefined) {
+    fields.attendees = normalizeLinkField(fields.attendees);
+  }
+  return fields;
+}
+
+function normalizeLinkField(value: FrontmatterValue): FrontmatterValue {
+  if (Array.isArray(value)) {
+    return value.map(normalizeWikiLink);
+  }
+  if (typeof value === "string") {
+    return normalizeWikiLink(value);
+  }
+  return value;
+}
+
+function normalizeWikiLink(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("[[") && trimmed.endsWith("]]")) {
+    return trimmed;
+  }
+  return `[[${trimmed}]]`;
 }
 
 function listRecordTypes(schema: EffectiveFrameworkSchema): RecordTypeSummary[] {
