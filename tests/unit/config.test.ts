@@ -68,6 +68,18 @@ describe("parseConfig", () => {
     expect(config.ocr.enabled).toBe(true);
   });
 
+  test("parses development default scopes for local clients without custom headers", () => {
+    const config = parseConfig(
+      validConfig.replace(
+        `jwks_cache_ttl_seconds = 3600`,
+        `jwks_cache_ttl_seconds = 3600
+development_default_scopes = ["vault:read", "daily:append", "unknown"]`
+      )
+    );
+
+    expect(config.auth.developmentDefaultScopes).toEqual(["vault:read", "daily:append"]);
+  });
+
   test("allows an explicit index sqlite path", () => {
     const config = parseConfig(
       validConfig.replace(

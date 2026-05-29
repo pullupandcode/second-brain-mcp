@@ -1,7 +1,7 @@
 import http, { IncomingMessage, ServerResponse } from "node:http";
 
 import { buildProtectedResourceMetadata } from "./auth/discovery.js";
-import { parseScopes } from "./auth/scopes.js";
+import { parseScopes, type Scope } from "./auth/scopes.js";
 import { loadConfig, type ServerConfig } from "./config.js";
 import { createRuntimeToolHandlers } from "./runtime.js";
 import { createToolRegistry, listToolsForScopes, type ToolDefinition } from "./tools/registry.js";
@@ -10,7 +10,7 @@ type JsonRpcId = string | number;
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
-  id: JsonRpcId;
+  id?: JsonRpcId;
   method: string;
   params?: unknown;
 }
@@ -24,6 +24,19 @@ export interface McpToolResult {
   content: McpTextContent[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
+}
+
+interface McpToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: JsonObjectSchema;
+}
+
+interface JsonObjectSchema {
+  type: "object";
+  properties: Record<string, unknown>;
+  required?: string[];
+  additionalProperties?: boolean;
 }
 
 export type ToolHandler = (arguments_: Record<string, unknown>) => McpToolResult | Promise<McpToolResult>;
@@ -80,13 +93,18 @@ async function routeRequest(
   }
 
   if (request.method === "GET" && url.pathname === "/tools") {
-    const scopes = parseScopes(extractDevelopmentScopeClaim(request.headers.authorization));
-    sendJson(response, 200, { tools: listToolsForScopes(scopes, tools) });
+    const scopes = scopesForRequest(request, config);
+    sendJson(response, 200, { tools: listMcpToolsForScopes(scopes, tools) });
     return;
   }
 
   if (request.method === "POST" && url.pathname === "/mcp") {
-    await handleMcpPost(request, response, tools, toolHandlers);
+    await handleMcpPost(request, response, config, tools, toolHandlers);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mcp") {
+    sendMethodNotAllowed(response, "POST");
     return;
   }
 
@@ -96,6 +114,7 @@ async function routeRequest(
 async function handleMcpPost(
   request: IncomingMessage,
   response: ServerResponse,
+  config: ServerConfig,
   tools: readonly ToolDefinition[],
   toolHandlers: ToolHandlerMap
 ): Promise<void> {
@@ -126,19 +145,64 @@ async function handleMcpPost(
   }
 
   if (message.method === "tools/list") {
-    const scopes = parseScopes(extractDevelopmentScopeClaim(request.headers.authorization));
+    if (message.id === undefined) {
+      sendEmpty(response, 202);
+      return;
+    }
+    const scopes = scopesForRequest(request, config);
     sendJson(response, 200, {
       jsonrpc: "2.0",
       id: message.id,
       result: {
-        tools: listToolsForScopes(scopes, tools)
+        tools: listMcpToolsForScopes(scopes, tools)
       }
     });
     return;
   }
 
   if (message.method === "tools/call") {
-    await handleToolCall(request, response, message, tools, toolHandlers);
+    await handleToolCall(request, response, config, message, tools, toolHandlers);
+    return;
+  }
+
+  if (message.method === "initialize") {
+    if (message.id === undefined) {
+      sendEmpty(response, 202);
+      return;
+    }
+    sendJson(response, 200, {
+      jsonrpc: "2.0",
+      id: message.id,
+      result: {
+        protocolVersion: readProtocolVersion(message.params),
+        capabilities: {
+          tools: {}
+        },
+        serverInfo: {
+          name: "second-brain-mcp",
+          version: "0.1.0"
+        }
+      }
+    });
+    return;
+  }
+
+  const emptyMethodResult = emptyResultForMethod(message.method);
+  if (emptyMethodResult !== undefined) {
+    if (message.id === undefined) {
+      sendEmpty(response, 202);
+      return;
+    }
+    sendJson(response, 200, {
+      jsonrpc: "2.0",
+      id: message.id,
+      result: emptyMethodResult
+    });
+    return;
+  }
+
+  if (message.id === undefined) {
+    sendEmpty(response, 202);
     return;
   }
 
@@ -150,6 +214,75 @@ async function handleMcpPost(
       message: "Method not found"
     }
   });
+}
+
+function emptyResultForMethod(method: string): object | undefined {
+  if (method === "ping") {
+    return {};
+  }
+  if (method === "resources/list") {
+    return { resources: [] };
+  }
+  if (method === "resources/templates/list") {
+    return { resourceTemplates: [] };
+  }
+  if (method === "prompts/list") {
+    return { prompts: [] };
+  }
+  return undefined;
+}
+
+function listMcpToolsForScopes(
+  scopes: ReadonlySet<Scope>,
+  tools: readonly ToolDefinition[]
+): McpToolDefinition[] {
+  return listToolsForScopes(scopes, tools).map(toMcpToolDefinition);
+}
+
+function toMcpToolDefinition(tool: ToolDefinition): McpToolDefinition {
+  return {
+    name: tool.name,
+    description: tool.description,
+    inputSchema: inputSchemaForTool(tool)
+  };
+}
+
+function inputSchemaForTool(tool: ToolDefinition): JsonObjectSchema {
+  if (tool.name === "create_record") {
+    return {
+      type: "object",
+      required: ["type", "title"],
+      properties: {
+        type: {
+          type: "string",
+          description: "Framework record type, such as capture, map, project, or source."
+        },
+        title: {
+          type: "string",
+          description: "Record title."
+        },
+        date: {
+          type: "string",
+          description: "Optional ISO date or datetime. Defaults to now."
+        },
+        body: {
+          type: "string",
+          description: "Optional note body appended after any configured template."
+        },
+        fields: {
+          type: "object",
+          description: "Optional frontmatter fields."
+        }
+      },
+      additionalProperties: false
+    };
+  }
+
+  return {
+    type: "object",
+    properties: {},
+    additionalProperties: true
+  };
 }
 
 function mcpHeadersMatchRequest(request: IncomingMessage, message: JsonRpcRequest): boolean {
@@ -190,11 +323,16 @@ function singleHeaderValue(value: string | string[] | undefined): string | undef
 async function handleToolCall(
   request: IncomingMessage,
   response: ServerResponse,
+  config: ServerConfig,
   message: JsonRpcRequest,
   tools: readonly ToolDefinition[],
   toolHandlers: ToolHandlerMap
 ): Promise<void> {
   const params = parseToolCallParams(message.params);
+  if (message.id === undefined) {
+    sendEmpty(response, 202);
+    return;
+  }
   if (params === undefined) {
     sendJson(response, 200, jsonRpcError(message.id, -32602, "Invalid params"));
     return;
@@ -207,18 +345,40 @@ async function handleToolCall(
     return;
   }
 
-  const scopes = parseScopes(extractDevelopmentScopeClaim(request.headers.authorization));
+  const scopes = scopesForRequest(request, config);
   if (!scopes.has(tool.requiredScope)) {
     sendJson(response, 200, jsonRpcError(message.id, -32003, "forbidden_scope"));
     return;
   }
 
-  const result = await handler(params.arguments);
+  let result: McpToolResult;
+  try {
+    result = await handler(params.arguments);
+  } catch (error) {
+    sendJson(
+      response,
+      200,
+      jsonRpcError(
+        message.id,
+        -32602,
+        error instanceof Error ? error.message : "Tool call failed"
+      )
+    );
+    return;
+  }
+
   sendJson(response, 200, {
     jsonrpc: "2.0",
     id: message.id,
     result
   });
+}
+
+function scopesForRequest(request: IncomingMessage, config: ServerConfig): Set<Scope> {
+  const explicitScopes = parseScopes(extractDevelopmentScopeClaim(request.headers.authorization));
+  return explicitScopes.size > 0
+    ? explicitScopes
+    : new Set(config.auth.developmentDefaultScopes ?? []);
 }
 
 function parseToolCallParams(
@@ -241,7 +401,17 @@ function parseToolCallParams(
   return { name, arguments: arguments_ as Record<string, unknown> };
 }
 
-function jsonRpcError(id: JsonRpcId, code: number, message: string): object {
+function readProtocolVersion(params: unknown): string {
+  if (typeof params !== "object" || params === null || Array.isArray(params)) {
+    return "2025-03-26";
+  }
+  const protocolVersion = (params as Record<string, unknown>).protocolVersion;
+  return typeof protocolVersion === "string" && protocolVersion.length > 0
+    ? protocolVersion
+    : "2025-03-26";
+}
+
+function jsonRpcError(id: JsonRpcId | undefined, code: number, message: string): object {
   return {
     jsonrpc: "2.0",
     id,
@@ -272,7 +442,7 @@ function parseJsonRpcRequest(source: string): JsonRpcRequest {
     throw new Error("Invalid JSON-RPC request");
   }
   const id = (parsed as { id?: unknown }).id;
-  if (typeof id !== "string" && typeof id !== "number") {
+  if (id !== undefined && typeof id !== "string" && typeof id !== "number") {
     throw new Error("Invalid JSON-RPC request id");
   }
   return parsed as JsonRpcRequest;
@@ -291,6 +461,18 @@ function sendJson(response: ServerResponse, statusCode: number, body: unknown): 
     "content-type": "application/json; charset=utf-8"
   });
   response.end(JSON.stringify(body));
+}
+
+function sendEmpty(response: ServerResponse, statusCode: number): void {
+  response.writeHead(statusCode);
+  response.end();
+}
+
+function sendMethodNotAllowed(response: ServerResponse, allow: string): void {
+  response.writeHead(405, {
+    allow
+  });
+  response.end();
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

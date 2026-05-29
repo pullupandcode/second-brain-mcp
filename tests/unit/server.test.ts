@@ -85,13 +85,29 @@ describe("createHttpServer", () => {
         authorization: "Bearer scope=vault:read daily:append"
       }
     });
-    const body = (await response.json()) as { tools: Array<{ name: string }> };
+    const body = (await response.json()) as {
+      tools: Array<{
+        name: string;
+        inputSchema?: unknown;
+        requiredScope?: unknown;
+      }>;
+    };
     const names = body.tools.map((tool) => tool.name);
+    const readNote = body.tools.find((tool) => tool.name === "read_note");
 
     expect(response.status).toBe(200);
     expect(names).toContain("read_note");
     expect(names).toContain("daily_note_append");
     expect(names).not.toContain("create_note");
+    expect(readNote).toMatchObject({
+      description: expect.any(String),
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: true
+      }
+    });
+    expect(readNote).not.toHaveProperty("requiredScope");
   });
 
   test("returns 404 for unknown routes", async () => {
@@ -123,9 +139,16 @@ describe("createHttpServer", () => {
     const body = (await response.json()) as {
       jsonrpc: string;
       id: number;
-      result: { tools: Array<{ name: string }> };
+      result: {
+        tools: Array<{
+          name: string;
+          inputSchema?: unknown;
+          requiredScope?: unknown;
+        }>;
+      };
     };
     const names = body.result.tools.map((tool) => tool.name);
+    const readNote = body.result.tools.find((tool) => tool.name === "read_note");
 
     expect(response.status).toBe(200);
     expect(body.jsonrpc).toBe("2.0");
@@ -133,6 +156,219 @@ describe("createHttpServer", () => {
     expect(names).toContain("read_note");
     expect(names).toContain("daily_note_append");
     expect(names).not.toContain("create_note");
+    expect(readNote).toMatchObject({
+      description: expect.any(String),
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: true
+      }
+    });
+    expect(readNote).not.toHaveProperty("requiredScope");
+  });
+
+  test("describes required create_record arguments in the MCP tool schema", async () => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:write",
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "create-record-schema",
+        method: "tools/list"
+      })
+    });
+    const body = (await response.json()) as {
+      result: {
+        tools: Array<{
+          name: string;
+          inputSchema?: unknown;
+        }>;
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.result.tools.find((tool) => tool.name === "create_record")).toMatchObject({
+      inputSchema: {
+        type: "object",
+        required: ["type", "title"],
+        properties: {
+          type: { type: "string" },
+          title: { type: "string" }
+        }
+      }
+    });
+  });
+
+  test("uses configured development default scopes when authorization is missing", async () => {
+    const baseUrl = await startServer(
+      {
+        read_note: async () => ({
+          content: [{ type: "text", text: "default scope read" }],
+          structuredContent: { ok: true }
+        })
+      },
+      {
+        ...config,
+        auth: {
+          ...config.auth,
+          developmentDefaultScopes: ["vault:read"]
+        }
+      }
+    );
+
+    const listResponse = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "default-scopes-list",
+        method: "tools/list"
+      })
+    });
+    const listBody = (await listResponse.json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+
+    expect(listResponse.status).toBe(200);
+    expect(listBody.result.tools.map((tool) => tool.name)).toContain("read_note");
+
+    const callResponse = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-method": "tools/call",
+        "mcp-name": "read_note"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "default-scopes-call",
+        method: "tools/call",
+        params: { name: "read_note", arguments: { path: "Inbox/Test.md" } }
+      })
+    });
+
+    expect(callResponse.status).toBe(200);
+    expect(await callResponse.json()).toMatchObject({
+      result: {
+        structuredContent: { ok: true }
+      }
+    });
+  });
+
+  test("serves JSON-RPC initialize over the MCP endpoint", async () => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-method": "initialize"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "init",
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "test-client", version: "0.0.0" }
+        }
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: "init",
+      result: {
+        protocolVersion: "2025-03-26",
+        capabilities: {
+          tools: {}
+        },
+        serverInfo: {
+          name: "second-brain-mcp",
+          version: "0.1.0"
+        }
+      }
+    });
+  });
+
+  test("accepts JSON-RPC initialized notifications over the MCP endpoint", async () => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-method": "notifications/initialized"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/initialized"
+      })
+    });
+
+    expect(response.status).toBe(202);
+    expect(await response.text()).toBe("");
+  });
+
+  test("reports that MCP SSE streams are unsupported instead of unknown", async () => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "GET",
+      headers: {
+        accept: "text/event-stream"
+      }
+    });
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
+    expect(await response.text()).toBe("");
+  });
+
+  test.each([
+    ["ping", {}],
+    ["resources/list", { resources: [] }],
+    ["resources/templates/list", { resourceTemplates: [] }],
+    ["prompts/list", { prompts: [] }]
+  ])("serves JSON-RPC %s over the MCP endpoint", async (method, result) => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-method": method
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: method,
+        method
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: method,
+      result
+    });
   });
 
   test("dispatches JSON-RPC tools/call to registered handlers", async () => {
@@ -167,6 +403,41 @@ describe("createHttpServer", () => {
       result: {
         content: [{ type: "text", text: '{"path":"Inbox/Test.md"}' }],
         structuredContent: { ok: true }
+      }
+    });
+  });
+
+  test("returns JSON-RPC errors when tool argument validation fails", async () => {
+    const baseUrl = await startServer({
+      create_record: async () => {
+        throw new Error("type must be a non-empty string");
+      }
+    });
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:write",
+        "content-type": "application/json",
+        "mcp-method": "tools/call",
+        "mcp-name": "create_record"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "invalid-create-record",
+        method: "tools/call",
+        params: { name: "create_record", arguments: {} }
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: "invalid-create-record",
+      error: {
+        code: -32602,
+        message: "type must be a non-empty string"
       }
     });
   });
@@ -1188,8 +1459,11 @@ log_args = false
   });
 });
 
-async function startServer(toolHandlers: ToolHandlerMap = {}): Promise<string> {
-  const server = createHttpServer({ config, toolHandlers });
+async function startServer(
+  toolHandlers: ToolHandlerMap = {},
+  serverConfig: ServerConfig = config
+): Promise<string> {
+  const server = createHttpServer({ config: serverConfig, toolHandlers });
   servers.push(server);
 
   await new Promise<void>((resolve) => {

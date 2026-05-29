@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
+import { KNOWN_SCOPES, type Scope } from "./auth/scopes.js";
 
 export type CaptureDefaultPattern = "A" | "B";
 
@@ -15,6 +16,7 @@ export interface ServerConfig {
     trustedIssuers: URL[];
     discoveryAuthorizationServer: URL;
     jwksCacheTtlSeconds: number;
+    developmentDefaultScopes?: Scope[];
   };
   index: {
     sqlitePath: string;
@@ -45,6 +47,7 @@ interface RawConfig {
     trusted_issuers?: unknown;
     discovery_authorization_server?: unknown;
     jwks_cache_ttl_seconds?: unknown;
+    development_default_scopes?: unknown;
   };
   index?: {
     sqlite_path?: unknown;
@@ -93,6 +96,10 @@ export function parseConfig(source: string): ServerConfig {
   if (captureDefaultPattern !== "A" && captureDefaultPattern !== "B") {
     throw new Error("daily_note.capture_default_pattern must be A or B");
   }
+  const developmentDefaultScopes = readOptionalScopeArray(
+    auth.development_default_scopes,
+    "auth.development_default_scopes"
+  );
 
   return {
     listen,
@@ -109,7 +116,8 @@ export function parseConfig(source: string): ServerConfig {
       jwksCacheTtlSeconds: requireInteger(
         auth.jwks_cache_ttl_seconds,
         "auth.jwks_cache_ttl_seconds"
-      )
+      ),
+      ...(developmentDefaultScopes === undefined ? {} : { developmentDefaultScopes })
     },
     index: {
       sqlitePath:
@@ -132,6 +140,15 @@ export function parseConfig(source: string): ServerConfig {
       logArgs: requireBoolean(logging.log_args, "logging.log_args")
     }
   };
+}
+
+function readOptionalScopeArray(value: unknown, name: string): Scope[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return requireStringArray(value, name).filter((scope): scope is Scope =>
+    (KNOWN_SCOPES as readonly string[]).includes(scope)
+  );
 }
 
 function requireObject<T extends object>(value: T | undefined, name: string): T {
