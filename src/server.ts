@@ -1,7 +1,8 @@
 import http, { IncomingMessage, ServerResponse } from "node:http";
 
 import { buildProtectedResourceMetadata } from "./auth/discovery.js";
-import { parseScopes, type Scope } from "./auth/scopes.js";
+import { AuthError, authenticateRequest, type AuthenticatedRequest } from "./auth/jwt.js";
+import type { Scope } from "./auth/scopes.js";
 import { loadConfig, type ServerConfig } from "./config.js";
 import { createRuntimeToolHandlers } from "./runtime.js";
 import { createToolRegistry, listToolsForScopes, type ToolDefinition } from "./tools/registry.js";
@@ -93,8 +94,11 @@ async function routeRequest(
   }
 
   if (request.method === "GET" && url.pathname === "/tools") {
-    const scopes = scopesForRequest(request, config);
-    sendJson(response, 200, { tools: listMcpToolsForScopes(scopes, tools) });
+    const auth = await authenticateHttpRequest(request, response, config);
+    if (auth === undefined) {
+      return;
+    }
+    sendJson(response, 200, { tools: listMcpToolsForScopes(auth.scopes, tools) });
     return;
   }
 
@@ -149,12 +153,15 @@ async function handleMcpPost(
       sendEmpty(response, 202);
       return;
     }
-    const scopes = scopesForRequest(request, config);
+    const auth = await authenticateHttpRequest(request, response, config);
+    if (auth === undefined) {
+      return;
+    }
     sendJson(response, 200, {
       jsonrpc: "2.0",
       id: message.id,
       result: {
-        tools: listMcpToolsForScopes(scopes, tools)
+        tools: listMcpToolsForScopes(auth.scopes, tools)
       }
     });
     return;
@@ -345,8 +352,11 @@ async function handleToolCall(
     return;
   }
 
-  const scopes = scopesForRequest(request, config);
-  if (!scopes.has(tool.requiredScope)) {
+  const auth = await authenticateHttpRequest(request, response, config);
+  if (auth === undefined) {
+    return;
+  }
+  if (!auth.scopes.has(tool.requiredScope)) {
     sendJson(response, 200, jsonRpcError(message.id, -32003, "forbidden_scope"));
     return;
   }
@@ -372,13 +382,6 @@ async function handleToolCall(
     id: message.id,
     result
   });
-}
-
-function scopesForRequest(request: IncomingMessage, config: ServerConfig): Set<Scope> {
-  const explicitScopes = parseScopes(extractDevelopmentScopeClaim(request.headers.authorization));
-  return explicitScopes.size > 0
-    ? explicitScopes
-    : new Set(config.auth.developmentDefaultScopes ?? []);
 }
 
 function parseToolCallParams(
@@ -448,19 +451,41 @@ function parseJsonRpcRequest(source: string): JsonRpcRequest {
   return parsed as JsonRpcRequest;
 }
 
-function extractDevelopmentScopeClaim(authorization: string | undefined): string | undefined {
-  const prefix = "Bearer scope=";
-  if (authorization?.startsWith(prefix) !== true) {
-    return undefined;
-  }
-  return authorization.slice(prefix.length);
-}
-
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {
   response.writeHead(statusCode, {
     "content-type": "application/json; charset=utf-8"
   });
   response.end(JSON.stringify(body));
+}
+
+async function authenticateHttpRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  config: ServerConfig
+): Promise<AuthenticatedRequest | undefined> {
+  try {
+    return await authenticateRequest(request.headers, config);
+  } catch (error) {
+    if (error instanceof AuthError) {
+      sendAuthError(response, error);
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+function sendAuthError(response: ServerResponse, error: AuthError): void {
+  response.writeHead(error.statusCode, {
+    "content-type": "application/json; charset=utf-8",
+    "www-authenticate": `Bearer error="${error.code}", error_description="${sanitizeHeaderValue(
+      error.message
+    )}"`
+  });
+  response.end(JSON.stringify({ error: error.code, message: error.message }));
+}
+
+function sanitizeHeaderValue(value: string): string {
+  return value.replaceAll('"', "'").replaceAll(/[\r\n]/g, " ");
 }
 
 function sendEmpty(response: ServerResponse, statusCode: number): void {

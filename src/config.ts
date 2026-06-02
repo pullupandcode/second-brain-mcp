@@ -5,6 +5,8 @@ import { parse as parseToml } from "smol-toml";
 import { KNOWN_SCOPES, type Scope } from "./auth/scopes.js";
 
 export type CaptureDefaultPattern = "A" | "B";
+export type AuthMode = "jwt" | "development";
+export type JwtAlgorithm = "RS256" | "ES256";
 
 export interface ServerConfig {
   listen: string;
@@ -12,10 +14,12 @@ export interface ServerConfig {
   vaultPath: string;
   statePath: string;
   auth: {
+    mode: AuthMode;
     audience: string;
     trustedIssuers: URL[];
     discoveryAuthorizationServer: URL;
     jwksCacheTtlSeconds: number;
+    jwtAlgorithms: JwtAlgorithm[];
     developmentDefaultScopes?: Scope[];
   };
   index: {
@@ -43,10 +47,12 @@ interface RawConfig {
   vault_path?: unknown;
   state_path?: unknown;
   auth?: {
+    mode?: unknown;
     audience?: unknown;
     trusted_issuers?: unknown;
     discovery_authorization_server?: unknown;
     jwks_cache_ttl_seconds?: unknown;
+    jwt_algorithms?: unknown;
     development_default_scopes?: unknown;
   };
   index?: {
@@ -107,6 +113,7 @@ export function parseConfig(source: string): ServerConfig {
     vaultPath,
     statePath,
     auth: {
+      mode: readAuthMode(auth.mode),
       audience: requireString(auth.audience, "auth.audience"),
       trustedIssuers,
       discoveryAuthorizationServer: requireHttpUrl(
@@ -117,6 +124,7 @@ export function parseConfig(source: string): ServerConfig {
         auth.jwks_cache_ttl_seconds,
         "auth.jwks_cache_ttl_seconds"
       ),
+      jwtAlgorithms: readJwtAlgorithms(auth.jwt_algorithms),
       ...(developmentDefaultScopes === undefined ? {} : { developmentDefaultScopes })
     },
     index: {
@@ -140,6 +148,30 @@ export function parseConfig(source: string): ServerConfig {
       logArgs: requireBoolean(logging.log_args, "logging.log_args")
     }
   };
+}
+
+function readAuthMode(value: unknown): AuthMode {
+  if (value === undefined) {
+    return "jwt";
+  }
+  if (value === "jwt" || value === "development") {
+    return value;
+  }
+  throw new Error("auth.mode must be jwt or development");
+}
+
+function readJwtAlgorithms(value: unknown): JwtAlgorithm[] {
+  if (value === undefined) {
+    return ["RS256"];
+  }
+  const algorithms = requireStringArray(value, "auth.jwt_algorithms");
+  if (
+    algorithms.length === 0 ||
+    algorithms.some((algorithm) => algorithm !== "RS256" && algorithm !== "ES256")
+  ) {
+    throw new Error("auth.jwt_algorithms must contain supported algorithms: RS256, ES256");
+  }
+  return algorithms as JwtAlgorithm[];
 }
 
 function readOptionalScopeArray(value: unknown, name: string): Scope[] | undefined {

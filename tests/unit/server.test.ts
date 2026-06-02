@@ -16,12 +16,14 @@ const config: ServerConfig = {
   vaultPath: "/vault",
   statePath: "/state",
   auth: {
+    mode: "development",
     audience: "second-brain-mcp",
     trustedIssuers: [new URL("https://idp.example.com/application/o/second-brain-mcp-human/")],
     discoveryAuthorizationServer: new URL(
       "https://idp.example.com/application/o/second-brain-mcp-human/"
     ),
-    jwksCacheTtlSeconds: 3600
+    jwksCacheTtlSeconds: 3600,
+    jwtAlgorithms: ["RS256"]
   },
   index: {
     sqlitePath: "/state/index.sqlite",
@@ -265,6 +267,70 @@ describe("createHttpServer", () => {
         structuredContent: { ok: true }
       }
     });
+  });
+
+  test("rejects tools/list without a bearer token in jwt mode", async () => {
+    const baseUrl = await startServer(
+      {},
+      {
+        ...config,
+        auth: {
+          ...config.auth,
+          mode: "jwt"
+        }
+      }
+    );
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "auth",
+        method: "tools/list"
+      })
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toContain("Bearer");
+  });
+
+  test("keeps development scopes working only in development mode", async () => {
+    const baseUrl = await startServer(
+      {},
+      {
+        ...config,
+        auth: {
+          ...config.auth,
+          mode: "development",
+          developmentDefaultScopes: ["vault:read"]
+        }
+      }
+    );
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "dev",
+        method: "tools/list"
+      })
+    });
+    const body = (await response.json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.result.tools.map((tool) => tool.name)).toContain("read_note");
   });
 
   test("serves JSON-RPC initialize over the MCP endpoint", async () => {
@@ -551,6 +617,7 @@ vault_path = "${tempRoot}/vault"
 state_path = "${tempRoot}/state"
 
 [auth]
+mode = "development"
 audience = "second-brain-mcp"
 trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
 discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
@@ -602,6 +669,7 @@ vault_path = "${vaultPath}"
 state_path = "${statePath}"
 
 [auth]
+mode = "development"
 audience = "second-brain-mcp"
 trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
 discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
@@ -681,6 +749,7 @@ vault_path = "${vaultPath}"
 state_path = "${statePath}"
 
 [auth]
+mode = "development"
 audience = "second-brain-mcp"
 trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
 discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
@@ -812,6 +881,7 @@ vault_path = "${vaultPath}"
 state_path = "${statePath}"
 
 [auth]
+mode = "development"
 audience = "second-brain-mcp"
 trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
 discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
@@ -931,6 +1001,7 @@ vault_path = "${vaultPath}"
 state_path = "${statePath}"
 
 [auth]
+mode = "development"
 audience = "second-brain-mcp"
 trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
 discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
@@ -1081,6 +1152,7 @@ vault_path = "${vaultPath}"
 state_path = "${statePath}"
 
 [auth]
+mode = "development"
 audience = "second-brain-mcp"
 trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
 discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
@@ -1169,6 +1241,7 @@ vault_path = "${vaultPath}"
 state_path = "${statePath}"
 
 [auth]
+mode = "development"
 audience = "second-brain-mcp"
 trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
 discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
@@ -1288,6 +1361,7 @@ vault_path = "${vaultPath}"
 state_path = "${statePath}"
 
 [auth]
+mode = "development"
 audience = "second-brain-mcp"
 trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
 discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
@@ -1398,6 +1472,7 @@ vault_path = "${vaultPath}"
 state_path = "${statePath}"
 
 [auth]
+mode = "development"
 audience = "second-brain-mcp"
 trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
 discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"

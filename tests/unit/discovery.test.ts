@@ -9,12 +9,14 @@ const config: ServerConfig = {
   vaultPath: "/vault",
   statePath: "/state",
   auth: {
+    mode: "development",
     audience: "second-brain-mcp",
     trustedIssuers: [new URL("https://idp.example.com/application/o/second-brain-mcp-human/")],
     discoveryAuthorizationServer: new URL(
       "https://idp.example.com/application/o/second-brain-mcp-human/"
     ),
-    jwksCacheTtlSeconds: 3600
+    jwksCacheTtlSeconds: 3600,
+    jwtAlgorithms: ["RS256"]
   },
   index: {
     sqlitePath: "/state/index.sqlite",

@@ -9,6 +9,7 @@ This implementation currently includes:
 - Strict TypeScript project scaffold
 - TOML runtime config parsing and validation
 - OAuth protected-resource discovery metadata builder
+- Bearer JWT validation against trusted issuer JWKS in production mode
 - Scope parsing for `vault:read`, `vault:write`, `vault:capture`, `daily:append`, and `admin`
 - Typed tool registry with scope-filtered listing
 - Framework-neutral record tool names and built-in presets for LYT, PARA, and Zettel
@@ -37,13 +38,18 @@ This implementation currently includes:
   - `GET /tools`
   - `POST /mcp` for JSON-RPC `tools/list` and injected `tools/call` handlers
 
-`GET /tools` currently uses a development bearer token shape for the first vertical slice:
+Production mode validates bearer JWT access tokens against configured trusted issuers,
+audience, expiration, allowed algorithms, and issuer JWKS.
+
+Development mode is available for local testing with a development bearer token shape:
 
 ```http
 Authorization: Bearer scope=vault:read daily:append
 ```
 
-Real JWT validation is a later implementation slice.
+For local Claude testing, use `auth.mode = "development"` and bind to `127.0.0.1`.
+For remote deployments, use `auth.mode = "jwt"`, configure trusted issuer URLs,
+and expose only HTTPS behind your reverse proxy.
 
 ## Commands
 

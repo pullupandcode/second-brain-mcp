@@ -80,6 +80,49 @@ development_default_scopes = ["vault:read", "daily:append", "unknown"]`
     expect(config.auth.developmentDefaultScopes).toEqual(["vault:read", "daily:append"]);
   });
 
+  test("parses production jwt auth mode and allowed algorithms", () => {
+    const config = parseConfig(
+      validConfig.replace(
+        `jwks_cache_ttl_seconds = 3600`,
+        `jwks_cache_ttl_seconds = 3600
+mode = "jwt"
+jwt_algorithms = ["RS256"]`
+      )
+    );
+
+    expect(config.auth.mode).toBe("jwt");
+    expect(config.auth.jwtAlgorithms).toEqual(["RS256"]);
+  });
+
+  test("defaults auth mode to jwt and jwt algorithms to RS256", () => {
+    const config = parseConfig(validConfig);
+
+    expect(config.auth.mode).toBe("jwt");
+    expect(config.auth.jwtAlgorithms).toEqual(["RS256"]);
+  });
+
+  test("rejects unknown auth modes and jwt algorithms", () => {
+    expect(() =>
+      parseConfig(
+        validConfig.replace(
+          `jwks_cache_ttl_seconds = 3600`,
+          `jwks_cache_ttl_seconds = 3600
+mode = "open"`
+        )
+      )
+    ).toThrow(/auth.mode must be jwt or development/);
+
+    expect(() =>
+      parseConfig(
+        validConfig.replace(
+          `jwks_cache_ttl_seconds = 3600`,
+          `jwks_cache_ttl_seconds = 3600
+jwt_algorithms = ["none"]`
+        )
+      )
+    ).toThrow(/auth.jwt_algorithms must contain supported algorithms/);
+  });
+
   test("allows an explicit index sqlite path", () => {
     const config = parseConfig(
       validConfig.replace(

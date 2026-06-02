@@ -1,5 +1,6 @@
 .worktrees/
 docs/superpowers/
+docs/blog/
 node_modules/
 dist/
 .pnpm-store/

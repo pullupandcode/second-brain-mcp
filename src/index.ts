@@ -1,4 +1,5 @@
 export { buildProtectedResourceMetadata } from "./auth/discovery.js";
+export { AuthError, authenticateRequest } from "./auth/jwt.js";
 export { KNOWN_SCOPES, parseScopes } from "./auth/scopes.js";
 export { loadConfig, parseConfig } from "./config.js";
 export { createDailyNoteTools, DailyNoteError } from "./framework/daily.js";
@@ -19,6 +20,7 @@ export { VaultWriteError, VaultWriter } from "./vault/writer.js";
 export { VaultIndex } from "./vault/index.js";
 export { createVaultReadTools, createVaultWriteTools } from "./vault/tools.js";
 export type { OAuthProtectedResourceMetadata } from "./auth/discovery.js";
+export type { AuthenticatedRequest, JwksLoader } from "./auth/jwt.js";
 export type { Scope } from "./auth/scopes.js";
 export type { ServerConfig } from "./config.js";
 export type {
