@@ -52,6 +52,8 @@ describe("parseConfig", () => {
     expect(config.index.watcherPolling).toBe(false);
     expect(config.index.ignoredGlobs).toEqual([".second-brain/workspace*", ".trash/**"]);
     expect(config.writes.cooldownSeconds).toBe(2);
+    expect(config.audit.retentionMaxRows).toBe(0);
+    expect(config.audit.archivePath).toBeUndefined();
     expect(config.dailyNote.captureDefaultPattern).toBe("B");
     expect(config.ocr.enabled).toBe(false);
     expect(config.logging.logArgs).toBe(false);
@@ -138,6 +140,42 @@ ignored_globs = []`
 
     expect(config.index.sqlitePath).toBe("/tmp/custom-index.sqlite");
     expect(config.index.watcherPolling).toBe(true);
+  });
+
+  test("parses optional audit retention config", () => {
+    const config = parseConfig(
+      validConfig.replace(
+        `[writes]
+cooldown_seconds = 2`,
+        `[writes]
+cooldown_seconds = 2
+
+[audit]
+retention_max_rows = 500
+archive_path = "/var/lib/second-brain-mcp/audit-archive"`
+      )
+    );
+
+    expect(config.audit).toEqual({
+      retentionMaxRows: 500,
+      archivePath: "/var/lib/second-brain-mcp/audit-archive"
+    });
+  });
+
+  test("rejects invalid audit retention config", () => {
+    expect(() =>
+      parseConfig(
+        validConfig.replace(
+          `[writes]
+cooldown_seconds = 2`,
+          `[writes]
+cooldown_seconds = 2
+
+[audit]
+retention_max_rows = -1`
+        )
+      )
+    ).toThrow(/audit.retention_max_rows must be a non-negative integer/);
   });
 
   test("parses multiline arrays and dotted table keys used by TOML 1.x configs", () => {

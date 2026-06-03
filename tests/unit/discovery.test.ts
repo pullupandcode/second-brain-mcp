@@ -26,6 +26,9 @@ const config: ServerConfig = {
   writes: {
     cooldownSeconds: 2
   },
+  audit: {
+    retentionMaxRows: 0
+  },
   dailyNote: {
     captureDefaultPattern: "B"
   },

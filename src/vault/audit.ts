@@ -1,4 +1,7 @@
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
+import { mkdir, rename } from "node:fs/promises";
+import path from "node:path";
 
 interface DatabaseSyncLike {
   exec(sql: string): void;
@@ -27,6 +30,24 @@ export type WriteAuditMetadata = Record<string, string | number | boolean | null
 export interface VaultWriteAuditStoreOptions {
   sqlitePath: string;
 }
+
+export interface WriteAuditRotationOptions {
+  sqlitePath: string;
+  archiveDirectory: string;
+  retentionMaxRows: number;
+  now?: Date;
+}
+
+export type WriteAuditRotationResult =
+  | {
+      rotated: false;
+      rowCount: number;
+    }
+  | {
+      rotated: true;
+      rowCount: number;
+      archivedPath: string;
+    };
 
 export interface WriteAuditInput {
   operation: WriteAuditOperation;
@@ -133,6 +154,45 @@ export class VaultWriteAuditStore {
       END;
     `);
   }
+}
+
+export async function rotateWriteAuditIfNeeded(
+  options: WriteAuditRotationOptions
+): Promise<WriteAuditRotationResult> {
+  if (options.sqlitePath === ":memory:" || !existsSync(options.sqlitePath)) {
+    return { rotated: false, rowCount: 0 };
+  }
+
+  const rowCount = countAuditRows(options.sqlitePath);
+  if (options.retentionMaxRows <= 0 || rowCount <= options.retentionMaxRows) {
+    return { rotated: false, rowCount };
+  }
+
+  await mkdir(options.archiveDirectory, { recursive: true });
+  const archivedPath = path.join(
+    options.archiveDirectory,
+    `write-audit.${formatArchiveTimestamp(options.now ?? new Date())}.sqlite`
+  );
+  await rename(options.sqlitePath, archivedPath);
+  return { rotated: true, rowCount, archivedPath };
+}
+
+function countAuditRows(sqlitePath: string): number {
+  const db = new DatabaseSync(sqlitePath);
+  try {
+    const rows = db.prepare("SELECT COUNT(*) AS count FROM write_audit").all() as Array<{
+      count: number;
+    }>;
+    return rows[0]?.count ?? 0;
+  } catch {
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
+function formatArchiveTimestamp(date: Date): string {
+  return date.toISOString().replaceAll("-", "").replaceAll(":", "").replace(".", "");
 }
 
 function clampLimit(limit: number | undefined): number {

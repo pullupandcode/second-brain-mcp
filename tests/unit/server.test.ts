@@ -1,5 +1,5 @@
 import { AddressInfo } from "node:net";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -32,6 +32,9 @@ const config: ServerConfig = {
   },
   writes: {
     cooldownSeconds: 2
+  },
+  audit: {
+    retentionMaxRows: 0
   },
   dailyNote: {
     captureDefaultPattern: "B"
@@ -844,6 +847,94 @@ log_args = false
         ]);
       } finally {
         audit.close();
+      }
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rotates oversized write audit database during config-backed startup", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-audit-runtime-"));
+    try {
+      const vaultPath = join(tempRoot, "vault");
+      const statePath = join(tempRoot, "state");
+      const auditPath = join(statePath, "write-audit.sqlite");
+      const archivePath = join(statePath, "audit-archive");
+      await mkdir(vaultPath, { recursive: true });
+      await mkdir(statePath, { recursive: true });
+      const audit = new VaultWriteAuditStore({ sqlitePath: auditPath });
+      audit.recordWrite({
+        operation: "create_note",
+        path: "one.md",
+        resultSha256: "one"
+      });
+      audit.close();
+      const configPath = join(tempRoot, "config.toml");
+      await writeFile(
+        configPath,
+        `
+listen = "127.0.0.1:0"
+public_base_url = "https://second-brain-mcp.example.com"
+vault_path = "${vaultPath}"
+state_path = "${statePath}"
+
+[auth]
+mode = "development"
+audience = "second-brain-mcp"
+trusted_issuers = ["https://idp.example.com/application/o/second-brain-mcp-human/"]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+
+[index]
+watcher_polling = false
+ignored_globs = ["**/*.sync-conflict-*"]
+
+[writes]
+cooldown_seconds = 0
+
+[audit]
+retention_max_rows = 0
+archive_path = "${archivePath}"
+
+[daily_note]
+capture_default_pattern = "A"
+
+[logging]
+log_args = false
+`
+      );
+
+      let server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      expect(await readdir(archivePath).catch(() => [])).toEqual([]);
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error === undefined ? resolve() : reject(error)));
+      });
+      servers.pop();
+
+      const auditAfterFirstStart = new VaultWriteAuditStore({ sqlitePath: auditPath });
+      auditAfterFirstStart.recordWrite({
+        operation: "create_note",
+        path: "two.md",
+        resultSha256: "two"
+      });
+      auditAfterFirstStart.close();
+      await writeFile(
+        configPath,
+        (await readFile(configPath, "utf8")).replace(
+          "retention_max_rows = 0",
+          "retention_max_rows = 1"
+        )
+      );
+
+      server = await startHttpServerFromConfigFile(configPath);
+      servers.push(server);
+      expect((await readdir(archivePath)).length).toBe(1);
+      const freshAudit = new VaultWriteAuditStore({ sqlitePath: auditPath });
+      try {
+        expect(freshAudit.listRecentWrites()).toEqual([]);
+      } finally {
+        freshAudit.close();
       }
     } finally {
       await rm(tempRoot, { recursive: true, force: true });

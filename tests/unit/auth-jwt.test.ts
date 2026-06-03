@@ -84,6 +84,7 @@ function config(): ServerConfig {
     },
     index: { sqlitePath: ":memory:", watcherPolling: false, ignoredGlobs: [] },
     writes: { cooldownSeconds: 0 },
+    audit: { retentionMaxRows: 0 },
     dailyNote: { captureDefaultPattern: "B" },
     ocr: { enabled: false },
     logging: { logArgs: false }

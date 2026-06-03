@@ -27,7 +27,7 @@ import type { OcrNotebookInput } from "./ocr/jobs.js";
 import type { ToolHandlerMap } from "./server.js";
 import type { SearchResult } from "./vault/index.js";
 import type { FrontmatterValue } from "./vault/markdown.js";
-import { VaultWriteAuditStore } from "./vault/audit.js";
+import { VaultWriteAuditStore, rotateWriteAuditIfNeeded } from "./vault/audit.js";
 import { VaultIndex } from "./vault/index.js";
 import { VaultReader } from "./vault/reader.js";
 import { createVaultReadTools, createVaultWriteTools } from "./vault/tools.js";
@@ -55,8 +55,14 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
     vaultRoot: config.vaultPath,
     cooldownSeconds: config.writes.cooldownSeconds
   });
+  const writeAuditPath = path.join(config.statePath, "write-audit.sqlite");
+  await rotateWriteAuditIfNeeded({
+    sqlitePath: writeAuditPath,
+    retentionMaxRows: config.audit.retentionMaxRows,
+    archiveDirectory: config.audit.archivePath ?? path.join(config.statePath, "audit-archive")
+  });
   const auditStore = new VaultWriteAuditStore({
-    sqlitePath: path.join(config.statePath, "write-audit.sqlite")
+    sqlitePath: writeAuditPath
   });
   const writeTools = createVaultWriteTools(writer, auditStore);
   const dailyNoteTools = createDailyNoteTools({

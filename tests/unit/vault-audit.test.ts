@@ -1,11 +1,11 @@
 import { createRequire } from "node:module";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { VaultWriteAuditStore } from "../../src/vault/audit.js";
+import { VaultWriteAuditStore, rotateWriteAuditIfNeeded } from "../../src/vault/audit.js";
 
 interface DatabaseSyncLike {
   exec(sql: string): void;
@@ -128,6 +128,67 @@ describe("VaultWriteAuditStore", () => {
       )
     ).toThrow(/write_audit is append-only/);
     db.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("rotates an oversized audit database into an archive directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "second-brain-audit-rotation-"));
+    const sqlitePath = join(dir, "write-audit.sqlite");
+    const archiveDirectory = join(dir, "audit-archive");
+    const audit = new VaultWriteAuditStore({ sqlitePath });
+    audit.recordWrite({
+      operation: "create_note",
+      path: "one.md",
+      resultSha256: "one"
+    });
+    audit.recordWrite({
+      operation: "create_note",
+      path: "two.md",
+      resultSha256: "two"
+    });
+    audit.close();
+
+    const result = await rotateWriteAuditIfNeeded({
+      sqlitePath,
+      archiveDirectory,
+      retentionMaxRows: 1,
+      now: new Date("2026-06-02T12:34:56.789Z")
+    });
+
+    expect(result).toEqual({
+      rotated: true,
+      archivedPath: join(archiveDirectory, "write-audit.20260602T123456789Z.sqlite"),
+      rowCount: 2
+    });
+    expect(await readdir(archiveDirectory)).toEqual([
+      "write-audit.20260602T123456789Z.sqlite"
+    ]);
+
+    const freshAudit = new VaultWriteAuditStore({ sqlitePath });
+    expect(freshAudit.listRecentWrites()).toEqual([]);
+    freshAudit.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("does not rotate when retention is disabled or under the row limit", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "second-brain-audit-retention-"));
+    const sqlitePath = join(dir, "write-audit.sqlite");
+    const archiveDirectory = join(dir, "audit-archive");
+    const audit = new VaultWriteAuditStore({ sqlitePath });
+    audit.recordWrite({
+      operation: "create_note",
+      path: "one.md",
+      resultSha256: "one"
+    });
+    audit.close();
+
+    await expect(
+      rotateWriteAuditIfNeeded({ sqlitePath, archiveDirectory, retentionMaxRows: 0 })
+    ).resolves.toEqual({ rotated: false, rowCount: 1 });
+    await expect(
+      rotateWriteAuditIfNeeded({ sqlitePath, archiveDirectory, retentionMaxRows: 1 })
+    ).resolves.toEqual({ rotated: false, rowCount: 1 });
+
     await rm(dir, { recursive: true, force: true });
   });
 });

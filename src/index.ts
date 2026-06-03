@@ -14,7 +14,7 @@ export { createHttpServer, startHttpServerFromConfigFile } from "./server.js";
 export { createToolRegistry, listToolsForScopes } from "./tools/registry.js";
 export { parseMarkdown } from "./vault/markdown.js";
 export { isMarkdownPath, normalizeVaultPath, resolveVaultPath } from "./vault/path.js";
-export { VaultWriteAuditStore } from "./vault/audit.js";
+export { VaultWriteAuditStore, rotateWriteAuditIfNeeded } from "./vault/audit.js";
 export { VaultReader } from "./vault/reader.js";
 export { VaultWriteError, VaultWriter } from "./vault/writer.js";
 export { VaultIndex } from "./vault/index.js";
@@ -90,6 +90,8 @@ export type {
   WriteAuditInput,
   WriteAuditMetadata,
   WriteAuditOperation,
+  WriteAuditRotationOptions,
+  WriteAuditRotationResult,
   WriteAuditRow
 } from "./vault/audit.js";
 export type { FrontmatterValue, ParsedMarkdown } from "./vault/markdown.js";

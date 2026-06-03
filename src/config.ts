@@ -30,6 +30,10 @@ export interface ServerConfig {
   writes: {
     cooldownSeconds: number;
   };
+  audit: {
+    retentionMaxRows: number;
+    archivePath?: string;
+  };
   dailyNote: {
     captureDefaultPattern: CaptureDefaultPattern;
   };
@@ -62,6 +66,10 @@ interface RawConfig {
   };
   writes?: {
     cooldown_seconds?: unknown;
+  };
+  audit?: {
+    retention_max_rows?: unknown;
+    archive_path?: unknown;
   };
   daily_note?: {
     capture_default_pattern?: unknown;
@@ -138,6 +146,7 @@ export function parseConfig(source: string): ServerConfig {
     writes: {
       cooldownSeconds: requireInteger(writes.cooldown_seconds, "writes.cooldown_seconds")
     },
+    audit: readAuditConfig(raw.audit),
     dailyNote: {
       captureDefaultPattern
     },
@@ -148,6 +157,23 @@ export function parseConfig(source: string): ServerConfig {
       logArgs: requireBoolean(logging.log_args, "logging.log_args")
     }
   };
+}
+
+function readAuditConfig(value: RawConfig["audit"]): ServerConfig["audit"] {
+  if (value === undefined) {
+    return { retentionMaxRows: 0 };
+  }
+  const retentionMaxRows =
+    value.retention_max_rows === undefined
+      ? 0
+      : requireNonNegativeInteger(value.retention_max_rows, "audit.retention_max_rows");
+  return withoutUndefined({
+    retentionMaxRows,
+    archivePath:
+      value.archive_path === undefined
+        ? undefined
+        : requireString(value.archive_path, "audit.archive_path")
+  }) as ServerConfig["audit"];
 }
 
 function readAuthMode(value: unknown): AuthMode {
@@ -211,6 +237,14 @@ function requireInteger(value: unknown, name: string): number {
   return value;
 }
 
+function requireNonNegativeInteger(value: unknown, name: string): number {
+  const integer = requireInteger(value, name);
+  if (integer < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  return integer;
+}
+
 function requireStringArray(value: unknown, name: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     throw new Error(`${name} must be an array of strings`);
@@ -237,4 +271,10 @@ function requireHttpUrl(value: unknown, name: string): URL {
     throw new Error(`${name} must be a valid http(s) URL`);
   }
   return parsed;
+}
+
+function withoutUndefined<T extends Record<string, unknown>>(object: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(object).filter(([, value]) => value !== undefined)
+  ) as Partial<T>;
 }
