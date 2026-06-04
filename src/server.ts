@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import http, { IncomingMessage, ServerResponse } from "node:http";
 
 import { buildProtectedResourceMetadata } from "./auth/discovery.js";
@@ -43,18 +44,33 @@ interface JsonObjectSchema {
 export type ToolHandler = (arguments_: Record<string, unknown>) => McpToolResult | Promise<McpToolResult>;
 export type ToolHandlerMap = Partial<Record<string, ToolHandler>>;
 
+export interface OperationalLogEntry {
+  ts: string;
+  sub: string;
+  client_id?: string;
+  tool: string;
+  args_hash: string;
+  args?: Record<string, unknown>;
+  result: "ok" | "error" | "forbidden_scope";
+  duration_ms: number;
+}
+
+export type OperationalLogger = (entry: OperationalLogEntry) => void;
+
 export interface CreateServerOptions {
   config: ServerConfig;
   tools?: readonly ToolDefinition[];
   toolHandlers?: ToolHandlerMap;
+  operationalLogger?: OperationalLogger;
 }
 
 export function createHttpServer(options: CreateServerOptions): http.Server {
   const tools = options.tools ?? createToolRegistry();
   const toolHandlers = options.toolHandlers ?? {};
+  const operationalLogger = options.operationalLogger;
 
   return http.createServer((request, response) => {
-    void routeRequest(request, response, options.config, tools, toolHandlers);
+    void routeRequest(request, response, options.config, tools, toolHandlers, operationalLogger);
   });
 }
 
@@ -64,7 +80,10 @@ export async function startHttpServerFromConfigFile(configPath: string): Promise
   const server = createHttpServer({
     config,
     tools: createToolRegistry({ ocrEnabled: config.ocr.enabled }),
-    toolHandlers: runtime.handlers
+    toolHandlers: runtime.handlers,
+    operationalLogger: (entry) => {
+      console.log(JSON.stringify(entry));
+    }
   });
   server.on("close", () => runtime.close());
   const listen = parseListenAddress(config.listen);
@@ -79,7 +98,8 @@ async function routeRequest(
   response: ServerResponse,
   config: ServerConfig,
   tools: readonly ToolDefinition[],
-  toolHandlers: ToolHandlerMap
+  toolHandlers: ToolHandlerMap,
+  operationalLogger: OperationalLogger | undefined
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://localhost");
 
@@ -103,7 +123,7 @@ async function routeRequest(
   }
 
   if (request.method === "POST" && url.pathname === "/mcp") {
-    await handleMcpPost(request, response, config, tools, toolHandlers);
+    await handleMcpPost(request, response, config, tools, toolHandlers, operationalLogger);
     return;
   }
 
@@ -120,7 +140,8 @@ async function handleMcpPost(
   response: ServerResponse,
   config: ServerConfig,
   tools: readonly ToolDefinition[],
-  toolHandlers: ToolHandlerMap
+  toolHandlers: ToolHandlerMap,
+  operationalLogger: OperationalLogger | undefined
 ): Promise<void> {
   let message: JsonRpcRequest;
   try {
@@ -168,7 +189,7 @@ async function handleMcpPost(
   }
 
   if (message.method === "tools/call") {
-    await handleToolCall(request, response, config, message, tools, toolHandlers);
+    await handleToolCall(request, response, config, message, tools, toolHandlers, operationalLogger);
     return;
   }
 
@@ -333,8 +354,10 @@ async function handleToolCall(
   config: ServerConfig,
   message: JsonRpcRequest,
   tools: readonly ToolDefinition[],
-  toolHandlers: ToolHandlerMap
+  toolHandlers: ToolHandlerMap,
+  operationalLogger: OperationalLogger | undefined
 ): Promise<void> {
+  const startedAt = Date.now();
   const params = parseToolCallParams(message.params);
   if (message.id === undefined) {
     sendEmpty(response, 202);
@@ -357,6 +380,7 @@ async function handleToolCall(
     return;
   }
   if (!auth.scopes.has(tool.requiredScope)) {
+    logToolCall(operationalLogger, config, auth, params, "forbidden_scope", startedAt);
     sendJson(response, 200, jsonRpcError(message.id, -32003, "forbidden_scope"));
     return;
   }
@@ -365,6 +389,7 @@ async function handleToolCall(
   try {
     result = await handler(params.arguments);
   } catch (error) {
+    logToolCall(operationalLogger, config, auth, params, "error", startedAt);
     sendJson(
       response,
       200,
@@ -377,11 +402,39 @@ async function handleToolCall(
     return;
   }
 
+  logToolCall(operationalLogger, config, auth, params, "ok", startedAt);
   sendJson(response, 200, {
     jsonrpc: "2.0",
     id: message.id,
     result
   });
+}
+
+function logToolCall(
+  operationalLogger: OperationalLogger | undefined,
+  config: ServerConfig,
+  auth: AuthenticatedRequest,
+  params: { name: string; arguments: Record<string, unknown> },
+  result: OperationalLogEntry["result"],
+  startedAt: number
+): void {
+  if (operationalLogger === undefined) {
+    return;
+  }
+  operationalLogger({
+    ts: new Date().toISOString(),
+    sub: auth.subject,
+    ...(auth.clientId === undefined ? {} : { client_id: auth.clientId }),
+    tool: params.name,
+    args_hash: hashArguments(params.arguments),
+    ...(config.logging.logArgs ? { args: params.arguments } : {}),
+    result,
+    duration_ms: Math.max(0, Date.now() - startedAt)
+  });
+}
+
+function hashArguments(arguments_: Record<string, unknown>): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify(arguments_)).digest("hex")}`;
 }
 
 function parseToolCallParams(

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { createHttpServer, startHttpServerFromConfigFile } from "../../src/server.js";
 import type { ServerConfig } from "../../src/config.js";
-import type { ToolHandlerMap } from "../../src/server.js";
+import type { OperationalLogEntry, OperationalLogger, ToolHandlerMap } from "../../src/server.js";
 import { VaultWriteAuditStore } from "../../src/vault/audit.js";
 
 const config: ServerConfig = {
@@ -473,6 +473,90 @@ describe("createHttpServer", () => {
         content: [{ type: "text", text: '{"path":"Inbox/Test.md"}' }],
         structuredContent: { ok: true }
       }
+    });
+  });
+
+  test("logs tool calls with redacted arguments by default", async () => {
+    const logEntries: OperationalLogEntry[] = [];
+    const baseUrl = await startServer(
+      {
+        read_note: async () => ({
+          content: [{ type: "text", text: "ok" }],
+          structuredContent: { ok: true }
+        })
+      },
+      config,
+      (entry) => logEntries.push(entry)
+    );
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:read",
+        "content-type": "application/json",
+        "mcp-method": "tools/call",
+        "mcp-name": "read_note"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "logged-read",
+        method: "tools/call",
+        params: { name: "read_note", arguments: { path: "Private/Note.md" } }
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(logEntries).toHaveLength(1);
+    expect(logEntries[0]).toMatchObject({
+      sub: "development",
+      tool: "read_note",
+      result: "ok",
+      args_hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      duration_ms: expect.any(Number)
+    });
+    expect(logEntries[0]).not.toHaveProperty("args");
+  });
+
+  test("includes tool arguments in logs only when enabled", async () => {
+    const logEntries: OperationalLogEntry[] = [];
+    const baseUrl = await startServer(
+      {
+        read_note: async () => ({
+          content: [{ type: "text", text: "ok" }],
+          structuredContent: { ok: true }
+        })
+      },
+      {
+        ...config,
+        logging: {
+          logArgs: true
+        }
+      },
+      (entry) => logEntries.push(entry)
+    );
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:read",
+        "content-type": "application/json",
+        "mcp-method": "tools/call",
+        "mcp-name": "read_note"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "logged-read-args",
+        method: "tools/call",
+        params: { name: "read_note", arguments: { path: "Private/Note.md" } }
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(logEntries).toHaveLength(1);
+    expect(logEntries[0]).toMatchObject({
+      args: { path: "Private/Note.md" }
     });
   });
 
@@ -1627,9 +1711,14 @@ log_args = false
 
 async function startServer(
   toolHandlers: ToolHandlerMap = {},
-  serverConfig: ServerConfig = config
+  serverConfig: ServerConfig = config,
+  operationalLogger?: OperationalLogger
 ): Promise<string> {
-  const server = createHttpServer({ config: serverConfig, toolHandlers });
+  const server = createHttpServer({
+    config: serverConfig,
+    toolHandlers,
+    ...(operationalLogger === undefined ? {} : { operationalLogger })
+  });
   servers.push(server);
 
   await new Promise<void>((resolve) => {
