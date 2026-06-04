@@ -98,6 +98,37 @@ describe("VaultWriteAuditStore", () => {
     audit.close();
   });
 
+  test("lists write attempts that started without a terminal event", () => {
+    const audit = new VaultWriteAuditStore({ sqlitePath: ":memory:" });
+    const incompleteAttemptId = audit.recordWriteStarted({
+      operation: "replace_note",
+      path: "Inbox/Interrupted.md",
+      baseSha256: "before",
+      metadata: {
+        client: "test"
+      }
+    });
+    const completedAttemptId = audit.recordWriteStarted({
+      operation: "create_note",
+      path: "Inbox/Complete.md"
+    });
+    audit.recordWriteSucceeded(completedAttemptId, "after");
+
+    expect(audit.listIncompleteWrites()).toEqual([
+      expect.objectContaining({
+        attemptId: incompleteAttemptId,
+        operation: "replace_note",
+        path: "Inbox/Interrupted.md",
+        baseSha256: "before",
+        metadata: {
+          client: "test"
+        }
+      })
+    ]);
+
+    audit.close();
+  });
+
   test("prevents update and delete through SQLite triggers", async () => {
     const dir = await mkdtemp(join(tmpdir(), "second-brain-audit-"));
     const sqlitePath = join(dir, "audit.sqlite");

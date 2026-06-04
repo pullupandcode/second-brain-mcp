@@ -28,6 +28,7 @@ const BASE_TOOLS = [
   tool("list_record_types", "vault:read", "List effective framework record types."),
   tool("get_vault_structure", "vault:read", "Return folder map and framework type list."),
   tool("link_to_page", "vault:read", "Return a stable OCR page wikilink."),
+  tool("list_write_recovery_diagnostics", "admin", "List write attempts without terminal audit events."),
   tool("framework_init", "admin", "Create a starter framework schema."),
   tool("framework_reload", "admin", "Reload framework schema files."),
   tool("framework_register", "admin", "Register a framework overlay."),

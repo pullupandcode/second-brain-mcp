@@ -86,6 +86,8 @@ export type {
 export type { RuntimeToolHandlers } from "./runtime.js";
 export type { ToolDefinition } from "./tools/registry.js";
 export type {
+  IncompleteWriteAuditAttempt,
+  WriteAuditAttemptInput,
   VaultWriteAuditStoreOptions,
   WriteAuditInput,
   WriteAuditMetadata,

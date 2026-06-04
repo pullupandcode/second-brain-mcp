@@ -224,6 +224,8 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
           ),
           recordTypes: (await frameworkRecordTools()).list_record_types()
         }),
+      list_write_recovery_diagnostics: () =>
+        structuredResult({ incompleteWrites: auditStore.listIncompleteWrites() }),
       framework_init: async (arguments_) => {
         const input: FrameworkInitInput = {
           framework: requireFrameworkPreset(arguments_, "framework")

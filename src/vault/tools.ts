@@ -56,27 +56,92 @@ export function createVaultWriteTools(
   auditStore?: VaultWriteAuditStore
 ): VaultWriteTools {
   return {
-    create_note: async (path, content, frontmatter) => {
-      const result = await writer.createNote(path, content, frontmatter);
-      recordWrite(auditStore, "create_note", result);
-      return result;
-    },
-    replace_note: async (path, content, baseSha256, frontmatter) => {
-      const result = await writer.replaceNote(path, content, baseSha256, frontmatter);
-      recordWrite(auditStore, "replace_note", result);
-      return result;
-    },
-    update_frontmatter: async (path, patch, baseSha256) => {
-      const result = await writer.updateFrontmatter(path, patch, baseSha256);
-      recordWrite(auditStore, "update_frontmatter", result);
-      return result;
-    },
-    replace_section_by_marker: async (path, markerName, content, baseSha256) => {
-      const result = await writer.replaceSectionByMarker(path, markerName, content, baseSha256);
-      recordWrite(auditStore, "replace_section_by_marker", result, { markerName });
-      return result;
-    }
+    create_note: (path, content, frontmatter) =>
+      auditedWrite(auditStore, "create_note", { path }, () =>
+        writer.createNote(path, content, frontmatter)
+      ),
+    replace_note: (path, content, baseSha256, frontmatter) =>
+      auditedWrite(auditStore, "replace_note", { path, baseSha256 }, () =>
+        writer.replaceNote(path, content, baseSha256, frontmatter)
+      ),
+    update_frontmatter: (path, patch, baseSha256) =>
+      auditedWrite(auditStore, "update_frontmatter", { path, baseSha256 }, () =>
+        writer.updateFrontmatter(path, patch, baseSha256)
+      ),
+    replace_section_by_marker: (path, markerName, content, baseSha256) =>
+      auditedWrite(
+        auditStore,
+        "replace_section_by_marker",
+        { path, baseSha256, metadata: { markerName } },
+        () => writer.replaceSectionByMarker(path, markerName, content, baseSha256)
+      )
   };
+}
+
+async function auditedWrite(
+  auditStore: VaultWriteAuditStore | undefined,
+  operation: WriteAuditOperation,
+  attempt: { path: string; baseSha256?: string; metadata?: Record<string, string> },
+  write: () => Promise<WriteResult>
+): Promise<WriteResult> {
+  const attemptId = recordWriteStarted(auditStore, operation, attempt);
+  try {
+    const result = await write();
+    recordWriteSucceeded(auditStore, attemptId, result.resultSha256);
+    recordWrite(auditStore, operation, result, attempt.metadata);
+    return result;
+  } catch (error) {
+    recordWriteFailed(auditStore, attemptId, errorMessage(error));
+    throw error;
+  }
+}
+
+function recordWriteStarted(
+  auditStore: VaultWriteAuditStore | undefined,
+  operation: WriteAuditOperation,
+  attempt: { path: string; baseSha256?: string; metadata?: Record<string, string> }
+): string | undefined {
+  try {
+    const input = {
+      operation,
+      path: attempt.path,
+      ...(attempt.baseSha256 === undefined ? {} : { baseSha256: attempt.baseSha256 }),
+      ...(attempt.metadata === undefined ? {} : { metadata: attempt.metadata })
+    };
+    return auditStore?.recordWriteStarted(input);
+  } catch {
+    return undefined;
+  }
+}
+
+function recordWriteSucceeded(
+  auditStore: VaultWriteAuditStore | undefined,
+  attemptId: string | undefined,
+  resultSha256: string
+): void {
+  if (attemptId === undefined) {
+    return;
+  }
+  try {
+    auditStore?.recordWriteSucceeded(attemptId, resultSha256);
+  } catch {
+    // Best effort only; the successful write audit row below is recorded independently.
+  }
+}
+
+function recordWriteFailed(
+  auditStore: VaultWriteAuditStore | undefined,
+  attemptId: string | undefined,
+  message: string
+): void {
+  if (attemptId === undefined) {
+    return;
+  }
+  try {
+    auditStore?.recordWriteFailed(attemptId, message);
+  } catch {
+    // Best effort only; preserve the original write error for the caller.
+  }
 }
 
 function recordWrite(
@@ -102,6 +167,10 @@ function recordWrite(
     // The vault write has already succeeded. Treat audit persistence as best effort
     // so callers do not retry a completed mutation and create duplicate/conflict writes.
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function linkToPage(index: VaultIndex, notebook: string, pageUuid: string): string | undefined {

@@ -47,4 +47,12 @@ describe("tool registry", () => {
     expect(withoutOcr).not.toContain("ocr_notebook");
     expect(withOcr).toContain("ocr_notebook");
   });
+
+  test("exposes write recovery diagnostics to admin scope only", () => {
+    const adminNames = listToolsForScopes(parseScopes("admin")).map((tool) => tool.name);
+    const writeNames = listToolsForScopes(parseScopes("vault:write")).map((tool) => tool.name);
+
+    expect(adminNames).toContain("list_write_recovery_diagnostics");
+    expect(writeNames).not.toContain("list_write_recovery_diagnostics");
+  });
 });

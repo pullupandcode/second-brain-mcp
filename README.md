@@ -27,6 +27,7 @@ This implementation currently includes:
 - Vault writer foundation for atomic creates/replaces, `base_sha256` checks, cooldown conflicts, frontmatter patching, and marker-scoped replacement
 - Primitive write tool adapter with append-only SQLite write audit rows for successful writes
 - Optional write-audit rotation on startup when configured row retention is exceeded
+- Admin write recovery diagnostics for attempts that started without terminal audit events
 - Rebuildable SQLite FTS index for search, backlinks, outgoing links, source ID lookup, and conflict listing
 - Config-file based HTTP server startup
 - Config-backed read tool runtime wiring for `tools/call`

@@ -132,6 +132,7 @@ describe("createVaultWriteTools", () => {
       code: "retryable_conflict"
     } satisfies Partial<VaultWriteError>);
     expect(audit.listRecentWrites().map((row) => row.operation)).toEqual(["create_note"]);
+    expect(audit.listIncompleteWrites()).toEqual([]);
     audit.close();
 
     const closedAudit = new VaultWriteAuditStore({ sqlitePath: ":memory:" });
