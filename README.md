@@ -34,6 +34,7 @@ This implementation currently includes:
 - Config-backed write runtime wiring for `create_note`, `replace_note`, `update_frontmatter`, and `replace_section_by_marker` with audit
 - Config-backed framework record runtime wiring for `create_record`, `inbox_capture`, `capture_for_date`, and `list_record_types`
 - MCP Streamable HTTP standard header consistency checks for `Mcp-Method` and `Mcp-Name`
+- Structured operational logs with hashed tool arguments by default
 - Minimal HTTP server routes:
   - `GET /healthz`
   - `GET /.well-known/oauth-protected-resource`
@@ -67,3 +68,7 @@ pnpm build
 ```bash
 pnpm dev -- --config path/to/config.toml
 ```
+
+## Deployment
+
+See [docs/deployment.md](docs/deployment.md) for production configuration, client integration notes, scope boundaries, logging, and audit diagnostics.

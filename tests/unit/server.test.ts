@@ -115,6 +115,39 @@ describe("createHttpServer", () => {
     expect(readNote).not.toHaveProperty("requiredScope");
   });
 
+  test.each([
+    ["vault:read", "read_note", "create_note"],
+    ["vault:write", "create_note", "read_note"],
+    ["vault:capture", "inbox_capture", "read_note"],
+    ["daily:append", "daily_note_append", "read_note"],
+    ["admin", "framework_list", "read_note"]
+  ])("exposes only %s tools through tools/list", async (scope, visibleTool, hiddenTool) => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: `Bearer scope=${scope}`,
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: `list-${scope}`,
+        method: "tools/list"
+      })
+    });
+    const body = (await response.json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    const names = body.result.tools.map((tool) => tool.name);
+
+    expect(response.status).toBe(200);
+    expect(names).toContain(visibleTool);
+    expect(names).not.toContain(hiddenTool);
+  });
+
   test("returns 404 for unknown routes", async () => {
     const baseUrl = await startServer();
 
@@ -628,6 +661,53 @@ describe("createHttpServer", () => {
         message: "forbidden_scope"
       }
     });
+  });
+
+  test.each([
+    ["vault:read", "read_note"],
+    ["vault:write", "create_note"],
+    ["vault:capture", "inbox_capture"],
+    ["daily:append", "daily_note_append"],
+    ["admin", "framework_list"]
+  ])("prevents %s tool calls without the matching scope", async (requiredScope, toolName) => {
+    let calls = 0;
+    const baseUrl = await startServer({
+      [toolName]: async () => {
+        calls += 1;
+        return {
+          content: [{ type: "text", text: "should not run" }],
+          structuredContent: { ok: false }
+        };
+      }
+    });
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=unknown",
+        "content-type": "application/json",
+        "mcp-method": "tools/call",
+        "mcp-name": toolName
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: `forbidden-${requiredScope}`,
+        method: "tools/call",
+        params: { name: toolName, arguments: {} }
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: `forbidden-${requiredScope}`,
+      error: {
+        code: -32003,
+        message: "forbidden_scope"
+      }
+    });
+    expect(calls).toBe(0);
   });
 
   test("returns JSON-RPC method errors for unsupported MCP methods", async () => {

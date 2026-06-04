@@ -50,6 +50,52 @@ describe("authenticateRequest", () => {
       .toBeInstanceOf(AuthError);
   });
 
+  test("rejects wrong audience tokens", async () => {
+    const { publicKey, privateKey } = await generateKeyPair("RS256");
+    const jwk = await exportJWK(publicKey);
+    const token = await new SignJWT({ scope: "vault:read" })
+      .setProtectedHeader({ alg: "RS256", kid: "wrong-audience" })
+      .setIssuer(issuer.href)
+      .setAudience("other-service")
+      .setSubject("user-123")
+      .setExpirationTime("2h")
+      .sign(privateKey);
+
+    await expect(
+      authenticateRequest(
+        { authorization: `Bearer ${token}` },
+        config(),
+        async () => ({ keys: [{ ...jwk, kid: "wrong-audience", alg: "RS256" }] })
+      )
+    ).rejects.toMatchObject({
+      code: "invalid_token",
+      statusCode: 401
+    });
+  });
+
+  test("rejects expired tokens", async () => {
+    const { publicKey, privateKey } = await generateKeyPair("RS256");
+    const jwk = await exportJWK(publicKey);
+    const token = await new SignJWT({ scope: "vault:read" })
+      .setProtectedHeader({ alg: "RS256", kid: "expired" })
+      .setIssuer(issuer.href)
+      .setAudience("second-brain-mcp")
+      .setSubject("user-123")
+      .setExpirationTime("1s ago")
+      .sign(privateKey);
+
+    await expect(
+      authenticateRequest(
+        { authorization: `Bearer ${token}` },
+        config(),
+        async () => ({ keys: [{ ...jwk, kid: "expired", alg: "RS256" }] })
+      )
+    ).rejects.toMatchObject({
+      code: "invalid_token",
+      statusCode: 401
+    });
+  });
+
   test("supports explicit development mode scope fallback", async () => {
     const result = await authenticateRequest(
       {},
