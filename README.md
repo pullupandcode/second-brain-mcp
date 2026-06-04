@@ -72,3 +72,5 @@ pnpm dev -- --config path/to/config.toml
 ## Deployment
 
 See [docs/deployment.md](docs/deployment.md) for production configuration, client integration notes, scope boundaries, logging, and audit diagnostics.
+
+See [docs/user-guide.md](docs/user-guide.md) for end-user setup, auth/key setup, OCR enablement, the full tool list, logging, and audit lookup workflows.

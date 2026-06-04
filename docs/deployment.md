@@ -1,5 +1,7 @@
 # Deployment and Client Integration
 
+For complete end-user setup, tool, logging, and audit workflows, see [user-guide.md](user-guide.md).
+
 This service exposes a Streamable HTTP MCP endpoint at:
 
 ```text
