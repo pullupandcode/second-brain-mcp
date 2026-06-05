@@ -244,6 +244,65 @@ describe("createHttpServer", () => {
     });
   });
 
+  test("describes required capture arguments in the MCP tool schema", async () => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:capture",
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "capture-schema",
+        method: "tools/list"
+      })
+    });
+    const body = (await response.json()) as {
+      result: {
+        tools: Array<{
+          name: string;
+          inputSchema?: {
+            type: string;
+            required?: string[];
+            properties?: Record<string, { type?: string; enum?: string[] }>;
+            additionalProperties?: boolean;
+          };
+        }>;
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.result.tools.find((tool) => tool.name === "capture_for_date")).toMatchObject({
+      inputSchema: {
+        type: "object",
+        required: ["content", "source_client"],
+        properties: {
+          content: { type: "string" },
+          source_client: { type: "string" },
+          date: { type: "string" },
+          source_id: { type: "string" },
+          capture_type: { type: "string" },
+          title: { type: "string" }
+        },
+        additionalProperties: false
+      }
+    });
+    expect(body.result.tools.find((tool) => tool.name === "inbox_capture")).toMatchObject({
+      inputSchema: {
+        type: "object",
+        required: ["content", "source_client"],
+        properties: {
+          strategy: { enum: ["create", "replace_by_source_id"] }
+        },
+        additionalProperties: false
+      }
+    });
+  });
+
   test("uses configured development default scopes when authorization is missing", async () => {
     const baseUrl = await startServer(
       {

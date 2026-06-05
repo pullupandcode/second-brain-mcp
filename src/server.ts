@@ -287,6 +287,10 @@ function toMcpToolDefinition(tool: ToolDefinition): McpToolDefinition {
 }
 
 function inputSchemaForTool(tool: ToolDefinition): JsonObjectSchema {
+  if (tool.name === "capture_for_date" || tool.name === "inbox_capture") {
+    return captureInputSchema(tool.name === "inbox_capture");
+  }
+
   if (tool.name === "create_record") {
     return {
       type: "object",
@@ -321,6 +325,49 @@ function inputSchemaForTool(tool: ToolDefinition): JsonObjectSchema {
     type: "object",
     properties: {},
     additionalProperties: true
+  };
+}
+
+function captureInputSchema(includeStrategy: boolean): JsonObjectSchema {
+  return {
+    type: "object",
+    required: ["content", "source_client"],
+    properties: {
+      content: {
+        type: "string",
+        description: "Markdown content to capture."
+      },
+      source_client: {
+        type: "string",
+        description: "Client or integration creating the capture."
+      },
+      date: {
+        type: "string",
+        description: "Optional ISO date or datetime. Defaults to now."
+      },
+      source_id: {
+        type: "string",
+        description: "Optional stable source identifier for deduplication."
+      },
+      capture_type: {
+        type: "string",
+        description: "Optional capture category."
+      },
+      title: {
+        type: "string",
+        description: "Optional capture title."
+      },
+      ...(includeStrategy
+        ? {
+            strategy: {
+              type: "string",
+              enum: ["create", "replace_by_source_id"],
+              description: "Optional inbox capture strategy."
+            }
+          }
+        : {})
+    },
+    additionalProperties: false
   };
 }
 
