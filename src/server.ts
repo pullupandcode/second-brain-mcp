@@ -9,6 +9,7 @@ import { createRuntimeToolHandlers } from "./runtime.js";
 import { createToolRegistry, listToolsForScopes, type ToolDefinition } from "./tools/registry.js";
 
 type JsonRpcId = string | number;
+const MAX_REQUEST_BODY_BYTES = 1_000_000;
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -146,7 +147,17 @@ async function handleMcpPost(
   let message: JsonRpcRequest;
   try {
     message = parseJsonRpcRequest(await readRequestBody(request));
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      sendJson(response, 413, {
+        jsonrpc: "2.0",
+        error: {
+          code: -32700,
+          message: "Request body too large"
+        }
+      });
+      return;
+    }
     sendJson(response, 400, {
       jsonrpc: "2.0",
       error: {
@@ -500,10 +511,22 @@ function jsonRpcError(id: JsonRpcId | undefined, code: number, message: string):
 
 async function readRequestBody(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > MAX_REQUEST_BODY_BYTES) {
+      throw new RequestBodyTooLargeError();
+    }
+    chunks.push(buffer);
   }
   return Buffer.concat(chunks).toString("utf8");
+}
+
+class RequestBodyTooLargeError extends Error {
+  constructor() {
+    super("Request body too large");
+  }
 }
 
 function parseJsonRpcRequest(source: string): JsonRpcRequest {

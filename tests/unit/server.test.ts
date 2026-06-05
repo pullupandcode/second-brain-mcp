@@ -408,6 +408,29 @@ describe("createHttpServer", () => {
     });
   });
 
+  test("rejects oversized MCP request bodies before auth", async () => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
+      },
+      body: "x".repeat(1_000_001)
+    });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      error: {
+        code: -32700,
+        message: "Request body too large"
+      }
+    });
+  });
+
   test("accepts JSON-RPC initialized notifications over the MCP endpoint", async () => {
     const baseUrl = await startServer();
 
