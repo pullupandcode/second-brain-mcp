@@ -628,6 +628,66 @@ describe("createHttpServer", () => {
     });
   });
 
+  test("does not reflect configured filesystem paths from tool errors", async () => {
+    const baseUrl = await startServer({
+      read_note: async () => {
+        throw new Error("ENOENT: no such file or directory, open '/vault/Private/Note.md'");
+      }
+    });
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:read",
+        "content-type": "application/json",
+        "mcp-method": "tools/call",
+        "mcp-name": "read_note"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "path-leak",
+        method: "tools/call",
+        params: { name: "read_note", arguments: { path: "Private/Note.md" } }
+      })
+    });
+    const body = (await response.json()) as { error: { message: string } };
+
+    expect(response.status).toBe(200);
+    expect(body.error.message).toBe("Tool call failed");
+    expect(JSON.stringify(body)).not.toContain("/vault");
+  });
+
+  test("does not reflect configured state paths from tool errors", async () => {
+    const baseUrl = await startServer({
+      read_note: async () => {
+        throw new Error("SQLITE_CANTOPEN: unable to open database file at /state/index.sqlite");
+      }
+    });
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:read",
+        "content-type": "application/json",
+        "mcp-method": "tools/call",
+        "mcp-name": "read_note"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "state-path-leak",
+        method: "tools/call",
+        params: { name: "read_note", arguments: { path: "Private/Note.md" } }
+      })
+    });
+    const body = (await response.json()) as { error: { message: string } };
+
+    expect(response.status).toBe(200);
+    expect(body.error.message).toBe("Tool call failed");
+    expect(JSON.stringify(body)).not.toContain("/state");
+  });
+
   test("rejects JSON-RPC tools/call without the required scope", async () => {
     const baseUrl = await startServer({
       read_note: async () => ({

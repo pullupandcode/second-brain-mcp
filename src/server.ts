@@ -396,7 +396,7 @@ async function handleToolCall(
       jsonRpcError(
         message.id,
         -32602,
-        error instanceof Error ? error.message : "Tool call failed"
+        sanitizeToolErrorMessage(error, config)
       )
     );
     return;
@@ -455,6 +455,26 @@ function parseToolCallParams(
     return undefined;
   }
   return { name, arguments: arguments_ as Record<string, unknown> };
+}
+
+function sanitizeToolErrorMessage(error: unknown, config: ServerConfig): string {
+  if (!(error instanceof Error)) {
+    return "Tool call failed";
+  }
+  const message = error.message;
+  if (sensitivePaths(config).some((sensitivePath) => message.includes(sensitivePath))) {
+    return "Tool call failed";
+  }
+  return message;
+}
+
+function sensitivePaths(config: ServerConfig): string[] {
+  return [
+    config.vaultPath,
+    config.statePath,
+    config.index.sqlitePath,
+    config.audit.archivePath
+  ].filter((value): value is string => typeof value === "string" && value.length > 0);
 }
 
 function readProtocolVersion(params: unknown): string {
