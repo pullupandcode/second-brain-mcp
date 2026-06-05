@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
@@ -90,8 +91,8 @@ export function parseConfig(source: string): ServerConfig {
   const raw = parseToml(source) as RawConfig;
   const listen = requireString(raw.listen, "listen");
   const publicBaseUrl = requireHttpUrl(raw.public_base_url, "public_base_url");
-  const vaultPath = requireString(raw.vault_path, "vault_path");
-  const statePath = requireString(raw.state_path, "state_path");
+  const vaultPath = requireFilesystemPath(raw.vault_path, "vault_path");
+  const statePath = requireFilesystemPath(raw.state_path, "state_path");
   const auth = requireObject(raw.auth, "auth");
   const index = requireObject(raw.index, "index");
   const writes = requireObject(raw.writes, "writes");
@@ -242,6 +243,20 @@ function requireObject<T extends object>(value: T | undefined, name: string): T 
 function requireString(value: unknown, name: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`${name} must be a non-empty string`);
+  }
+  return value;
+}
+
+function requireFilesystemPath(value: unknown, name: string): string {
+  return expandHomePath(requireString(value, name));
+}
+
+function expandHomePath(value: string): string {
+  if (value === "~") {
+    return homedir();
+  }
+  if (value.startsWith("~/")) {
+    return join(homedir(), value.slice(2));
   }
   return value;
 }

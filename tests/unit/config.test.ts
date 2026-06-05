@@ -1,3 +1,6 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 import { parseConfig } from "../../src/config.js";
@@ -101,6 +104,24 @@ jwt_algorithms = ["RS256"]`
 
     expect(config.auth.mode).toBe("jwt");
     expect(config.auth.jwtAlgorithms).toEqual(["RS256"]);
+  });
+
+  test("expands home-relative vault and state paths without shell evaluation", () => {
+    const config = parseConfig(
+      validConfig
+        .replace('vault_path = "/vault"', 'vault_path = "~/vault"')
+        .replace('state_path = "/var/lib/second-brain-mcp"', 'state_path = "~/mcp-state"')
+    );
+
+    expect(config.vaultPath).toBe(join(homedir(), "vault"));
+    expect(config.statePath).toBe(join(homedir(), "mcp-state"));
+    expect(config.index.sqlitePath).toBe(join(homedir(), "mcp-state", "index.sqlite"));
+  });
+
+  test("does not treat other tilde-prefixed paths as home-relative", () => {
+    const config = parseConfig(validConfig.replace('vault_path = "/vault"', 'vault_path = "~vault"'));
+
+    expect(config.vaultPath).toBe("~vault");
   });
 
   test("rejects unknown auth modes and jwt algorithms", () => {
