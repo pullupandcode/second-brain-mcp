@@ -91,7 +91,7 @@ describe("createVaultWriteTools", () => {
       replaced.resultSha256
     );
     expect(await readFile(join(vaultRoot, "Inbox", "New.md"), "utf8")).toBe(
-      "---\nstatus: processed\n---\nUpdated"
+      '---\nstatus: "processed"\n---\nUpdated'
     );
 
     await writeFile(

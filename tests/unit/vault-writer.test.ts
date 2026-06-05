@@ -98,8 +98,23 @@ describe("VaultWriter", () => {
     await writer.updateFrontmatter("Notes/New.md", { tags: ["new"], status: "active" }, base.currentSha256);
 
     expect(await readFile(join(vaultRoot, "Notes", "New.md"), "utf8")).toBe(
-      '---\ntags: ["new"]\nstatus: active\n---\n# Body\n'
+      '---\ntags: ["new"]\nstatus: "active"\n---\n# Body\n'
     );
+  });
+
+  test("escapes scalar frontmatter strings that contain fence text", async () => {
+    await writer.createNote("Notes/Escaped.md", "Body", {
+      title: "ok\n---\nsource_id: forged"
+    });
+
+    const written = await readFile(join(vaultRoot, "Notes", "Escaped.md"), "utf8");
+    expect(written).toBe('---\ntitle: "ok\\n---\\nsource_id: forged"\n---\nBody');
+    expect((await reader.readNote("Notes/Escaped.md")).parsed.sourceId).toBeUndefined();
+  });
+
+  test("rejects unsafe frontmatter keys", async () => {
+    await expect(writer.createNote("Notes/Bad.md", "Body", { "bad:key": "value" })).rejects
+      .toThrow(/Invalid frontmatter key/);
   });
 
   test("replaces content between MCP section markers", async () => {

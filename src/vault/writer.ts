@@ -199,7 +199,7 @@ function withFrontmatter(
 
 function serializeFrontmatter(frontmatter: Record<string, FrontmatterValue>): string {
   return Object.entries(frontmatter)
-    .map(([key, value]) => `${key}: ${serializeFrontmatterValue(value)}\n`)
+    .map(([key, value]) => `${serializeFrontmatterKey(key)}: ${serializeFrontmatterValue(value)}\n`)
     .join("");
 }
 
@@ -207,7 +207,17 @@ function serializeFrontmatterValue(value: FrontmatterValue): string {
   if (Array.isArray(value)) {
     return `[${value.map(quoteArrayItem).join(", ")}]`;
   }
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
   return String(value);
+}
+
+function serializeFrontmatterKey(key: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(key)) {
+    throw new Error(`Invalid frontmatter key: ${key}`);
+  }
+  return key;
 }
 
 function quoteArrayItem(value: string): string {

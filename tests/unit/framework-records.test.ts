@@ -61,10 +61,10 @@ describe("createFrameworkRecordTools", () => {
     expect(await readFile(join(vaultRoot, result.path), "utf8")).toBe(
       [
         "---",
-        "type: meeting",
-        "title: Planning",
-        "date: 2026-05-07",
-        "scheduled: 2026-05-07 03:30 PM",
+        'type: "meeting"',
+        'title: "Planning"',
+        'date: "2026-05-07"',
+        'scheduled: "2026-05-07 03:30 PM"',
         'attendees: ["[[Ada]]", "[[Grace]]"]',
         "---",
         "# Meeting Notes",
@@ -134,12 +134,12 @@ describe("createFrameworkRecordTools", () => {
     expect(await readFile(join(vaultRoot, result.path), "utf8")).toBe(
       [
         "---",
-        "type: capture",
-        "title: Schema review",
-        "date: 2026-05-07",
-        "source_client: codex",
-        "source_id: msg-123",
-        "capture_type: idea",
+        'type: "capture"',
+        'title: "Schema review"',
+        'date: "2026-05-07"',
+        'source_client: "codex"',
+        'source_id: "msg-123"',
+        'capture_type: "idea"',
         "---",
         "Remember to review the MCP schema."
       ].join("\n")
@@ -190,11 +190,11 @@ describe("createFrameworkRecordTools", () => {
     expect(await readFile(join(vaultRoot, created.path), "utf8")).toBe(
       [
         "---",
-        "type: capture",
-        "title: Page 1 revised",
-        "date: 2026-05-07",
-        "source_client: rmocr",
-        "source_id: rmpage:notebook:page",
+        'type: "capture"',
+        'title: "Page 1 revised"',
+        'date: "2026-05-07"',
+        'source_client: "rmocr"',
+        'source_id: "rmpage:notebook:page"',
         "---",
         "Updated OCR text"
       ].join("\n")

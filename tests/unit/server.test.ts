@@ -971,7 +971,7 @@ log_args = false
 
       expect(createResponse.status).toBe(200);
       expect(await readFile(join(vaultPath, "Inbox", "Written.md"), "utf8")).toBe(
-        "---\nsource: test\n---\nWritten from runtime"
+        '---\nsource: "test"\n---\nWritten from runtime'
       );
 
       const replaceResponse = await fetch(`${baseUrl}/mcp`, {
@@ -1174,7 +1174,7 @@ log_args = false
       expect(frontmatterResponse.response.status).toBe(200);
       expect(frontmatterResponse.result.structuredContent.path).toBe("Inbox/Section.md");
       expect(await readFile(join(vaultPath, "Inbox", "Section.md"), "utf8")).toContain(
-        "status: reviewed"
+        'status: "reviewed"'
       );
 
       const readBeforeMarker = await callTool(baseUrl, "read_note", {
