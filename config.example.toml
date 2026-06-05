@@ -1,0 +1,63 @@
+# Example local development config for second-brain-mcp.
+#
+# Copy this file to a machine-local path such as config.local.toml and update
+# vault_path, state_path, public_base_url, and auth settings for your setup.
+
+listen = "127.0.0.1:3000"
+public_base_url = "http://127.0.0.1:3000"
+vault_path = "~/Obsidian/vault"
+state_path = "~/Obsidian/mcp-test"
+
+[auth]
+# Use "jwt" for production. Use "development" only for local testing.
+mode = "development"
+audience = "second-brain-mcp"
+trusted_issuers = [
+  "https://idp.example.com/application/o/second-brain-mcp-human/"
+]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+jwt_algorithms = ["RS256"]
+# Local development only. These scopes are used in development mode when a
+# client does not send Authorization: Bearer scope=... .
+development_default_scopes = [
+  "vault:read",
+  "vault:write",
+  "vault:capture",
+  "daily:append",
+  "admin"
+]
+
+[index]
+# Optional. If omitted in a real config, this defaults to state_path/index.sqlite.
+# sqlite_path = "/absolute/path/to/second-brain-mcp-state/index.sqlite"
+watcher_polling = false
+ignored_globs = [
+  ".obsidian/workspace*",
+  ".obsidian/cache*",
+  ".trash/**",
+  "**/.DS_Store",
+  "**/*.sync-conflict-*"
+]
+
+[writes]
+cooldown_seconds = 2
+
+[audit]
+# Disabled by default. When greater than 0, startup archives write-audit.sqlite
+# to audit-archive/ if the row count exceeds this value, then starts fresh.
+retention_max_rows = 0
+# Optional. Defaults to state_path/audit-archive.
+# archive_path = "/absolute/path/to/audit-archive"
+
+[daily_note]
+# A creates direct daily-note append flows; B prefers dated capture records.
+capture_default_pattern = "B"
+
+[ocr]
+# When true, exposes ocr_notebook, ocr_status, and ocr_renumber_notebook.
+enabled = false
+
+[logging]
+# Keep false unless debugging locally; tool args can contain private vault text.
+log_args = false
