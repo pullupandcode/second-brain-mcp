@@ -110,6 +110,8 @@ export function parseConfig(source: string): ServerConfig {
   if (captureDefaultPattern !== "A" && captureDefaultPattern !== "B") {
     throw new Error("daily_note.capture_default_pattern must be A or B");
   }
+  const authMode = readAuthMode(auth.mode);
+  assertDevelopmentAuthIsLocal(listen, authMode);
   const developmentDefaultScopes = readOptionalScopeArray(
     auth.development_default_scopes,
     "auth.development_default_scopes"
@@ -121,7 +123,7 @@ export function parseConfig(source: string): ServerConfig {
     vaultPath,
     statePath,
     auth: {
-      mode: readAuthMode(auth.mode),
+      mode: authMode,
       audience: requireString(auth.audience, "auth.audience"),
       trustedIssuers,
       discoveryAuthorizationServer: requireHttpUrl(
@@ -184,6 +186,27 @@ function readAuthMode(value: unknown): AuthMode {
     return value;
   }
   throw new Error("auth.mode must be jwt or development");
+}
+
+function assertDevelopmentAuthIsLocal(listen: string, authMode: AuthMode): void {
+  if (authMode !== "development" || process.env.SECOND_BRAIN_ALLOW_DEV_AUTH === "1") {
+    return;
+  }
+  const host = readListenHost(listen);
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") {
+    return;
+  }
+  throw new Error(
+    "development auth requires a loopback listen address or SECOND_BRAIN_ALLOW_DEV_AUTH=1"
+  );
+}
+
+function readListenHost(listen: string): string {
+  const separator = listen.lastIndexOf(":");
+  if (separator === -1) {
+    return listen;
+  }
+  return listen.slice(0, separator);
 }
 
 function readJwtAlgorithms(value: unknown): JwtAlgorithm[] {

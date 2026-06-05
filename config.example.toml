@@ -1,4 +1,4 @@
-# Example local development config for second-brain-mcp.
+# Example config for second-brain-mcp.
 #
 # Copy this file to a machine-local path such as config.local.toml and update
 # vault_path, state_path, public_base_url, and auth settings for your setup.
@@ -9,8 +9,8 @@ vault_path = "~/Obsidian/vault"
 state_path = "~/Obsidian/mcp-test"
 
 [auth]
-# Use "jwt" for production. Use "development" only for local testing.
-mode = "development"
+# Use "development" only for local loopback testing.
+mode = "jwt"
 audience = "second-brain-mcp"
 trusted_issuers = [
   "https://idp.example.com/application/o/second-brain-mcp-human/"
@@ -24,8 +24,7 @@ development_default_scopes = [
   "vault:read",
   "vault:write",
   "vault:capture",
-  "daily:append",
-  "admin"
+  "daily:append"
 ]
 
 [index]

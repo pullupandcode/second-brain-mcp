@@ -125,6 +125,44 @@ jwt_algorithms = ["none"]`
     ).toThrow(/auth.jwt_algorithms must contain supported algorithms/);
   });
 
+  test("rejects development auth on non-loopback listen addresses", () => {
+    expect(() =>
+      parseConfig(
+        validConfig
+          .replace('listen = "127.0.0.1:8080"', 'listen = "0.0.0.0:8080"')
+          .replace(
+            `jwks_cache_ttl_seconds = 3600`,
+            `jwks_cache_ttl_seconds = 3600
+mode = "development"`
+          )
+      )
+    ).toThrow(/development auth requires a loopback listen address/);
+  });
+
+  test("allows development auth on non-loopback addresses with explicit env opt-in", () => {
+    const previous = process.env.SECOND_BRAIN_ALLOW_DEV_AUTH;
+    process.env.SECOND_BRAIN_ALLOW_DEV_AUTH = "1";
+    try {
+      const config = parseConfig(
+        validConfig
+          .replace('listen = "127.0.0.1:8080"', 'listen = "0.0.0.0:8080"')
+          .replace(
+            `jwks_cache_ttl_seconds = 3600`,
+            `jwks_cache_ttl_seconds = 3600
+mode = "development"`
+          )
+      );
+
+      expect(config.auth.mode).toBe("development");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SECOND_BRAIN_ALLOW_DEV_AUTH;
+      } else {
+        process.env.SECOND_BRAIN_ALLOW_DEV_AUTH = previous;
+      }
+    }
+  });
+
   test("allows an explicit index sqlite path", () => {
     const config = parseConfig(
       validConfig.replace(
