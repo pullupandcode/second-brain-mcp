@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { parseMarkdown, type FrontmatterValue } from "./markdown.js";
-import { normalizeVaultPath, resolveVaultPath } from "./path.js";
+import { normalizeVaultPath, resolveExistingVaultPath, resolveVaultPathForWrite } from "./path.js";
 
 export type VaultWriteErrorCode =
   | "path_exists"
@@ -59,7 +59,7 @@ export class VaultWriter {
   ): Promise<WriteResult> {
     return this.withPathLock(vaultPath, async (normalizedPath) => {
       this.assertNotQuarantined(normalizedPath);
-      const absolutePath = resolveVaultPath(this.vaultRoot, normalizedPath);
+      const absolutePath = await resolveVaultPathForWrite(this.vaultRoot, normalizedPath);
       if (await exists(absolutePath)) {
         throw new VaultWriteError("path_exists", `Path already exists: ${normalizedPath}`);
       }
@@ -121,7 +121,7 @@ export class VaultWriter {
   ): Promise<WriteResult> {
     return this.withPathLock(vaultPath, async (normalizedPath) => {
       this.assertNotQuarantined(normalizedPath);
-      const absolutePath = resolveVaultPath(this.vaultRoot, normalizedPath);
+      const absolutePath = await resolveExistingVaultPath(this.vaultRoot, normalizedPath);
       if (!(await exists(absolutePath))) {
         throw new VaultWriteError("path_missing", `Path does not exist: ${normalizedPath}`);
       }

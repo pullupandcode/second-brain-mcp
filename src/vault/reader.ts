@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { lstat, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { parseMarkdown, type ParsedMarkdown } from "./markdown.js";
-import { isMarkdownPath, normalizeVaultPath, resolveVaultPath } from "./path.js";
+import { isMarkdownPath, normalizeVaultPath, resolveExistingVaultPath } from "./path.js";
 
 export interface VaultReaderOptions {
   vaultRoot: string;
@@ -40,7 +40,7 @@ export class VaultReader {
       throw new Error(`Vault path is not a markdown note: ${vaultPath}`);
     }
 
-    const content = await readFile(resolveVaultPath(this.vaultRoot, vaultPath), "utf8");
+    const content = await readFile(await resolveExistingVaultPath(this.vaultRoot, vaultPath), "utf8");
     return {
       path: vaultPath,
       content,
@@ -54,7 +54,7 @@ export class VaultReader {
     options: { recursive?: boolean } = {}
   ): Promise<FolderEntry[]> {
     const vaultPath = normalizeVaultPath(inputPath);
-    const absolutePath = resolveVaultPath(this.vaultRoot, vaultPath);
+    const absolutePath = await resolveExistingVaultPath(this.vaultRoot, vaultPath);
     const entries: FolderEntry[] = [];
     await this.collectFolderEntries(absolutePath, vaultPath, options.recursive === true, entries);
     return entries;
@@ -80,7 +80,7 @@ export class VaultReader {
       }
 
       const childAbsolutePath = path.join(absolutePath, entry.name);
-      const childStat = await stat(childAbsolutePath);
+      const childStat = await lstat(childAbsolutePath);
       if (childStat.isDirectory()) {
         if (recursive) {
           await this.collectFolderEntries(childAbsolutePath, normalizedChild, recursive, output);

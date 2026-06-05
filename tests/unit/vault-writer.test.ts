@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -8,11 +8,13 @@ import { VaultReader } from "../../src/vault/reader.js";
 import { VaultWriteError, VaultWriter } from "../../src/vault/writer.js";
 
 let vaultRoot: string;
+let outsideRoot: string;
 let reader: VaultReader;
 let writer: VaultWriter;
 
 beforeEach(async () => {
   vaultRoot = await mkdtemp(join(tmpdir(), "second-brain-writer-"));
+  outsideRoot = await mkdtemp(join(tmpdir(), "second-brain-writer-outside-"));
   await mkdir(join(vaultRoot, "Notes"), { recursive: true });
   reader = new VaultReader({ vaultRoot, ignoredGlobs: [] });
   writer = new VaultWriter({ vaultRoot, cooldownSeconds: 0 });
@@ -20,6 +22,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(vaultRoot, { recursive: true, force: true });
+  await rm(outsideRoot, { recursive: true, force: true });
 });
 
 describe("VaultWriter", () => {
@@ -125,5 +128,16 @@ describe("VaultWriter", () => {
     await writer.createNote("Notes/New.md", "Hello");
 
     await expect(writer.createNote("Notes/New.md", "Again")).rejects.toBeInstanceOf(VaultWriteError);
+  });
+
+  test("rejects creates through symlinked directories outside the vault", async () => {
+    await symlink(outsideRoot, join(vaultRoot, "Escape"));
+
+    await expect(writer.createNote("Escape/Pwned.md", "owned")).rejects.toThrow(
+      /outside the vault root/
+    );
+    await expect(readFile(join(outsideRoot, "Pwned.md"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT"
+    });
   });
 });

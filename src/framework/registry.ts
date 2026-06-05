@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { normalizeVaultPath, resolveVaultPath } from "../vault/path.js";
+import {
+  normalizeVaultPath,
+  resolveExistingVaultPath,
+  resolveVaultPath,
+  resolveVaultPathForWrite
+} from "../vault/path.js";
 
 export interface FrameworkRegistryStoreOptions {
   vaultRoot: string;
@@ -53,10 +58,11 @@ export class FrameworkRegistryStore {
   }
 
   private async readRegistry(): Promise<FrameworkOverlayRegistration[]> {
-    const absolutePath = resolveVaultPath(this.vaultRoot, this.registryPath);
-    if (!(await exists(absolutePath))) {
+    const lexicalPath = resolveVaultPath(this.vaultRoot, this.registryPath);
+    if (!(await exists(lexicalPath))) {
       return [];
     }
+    const absolutePath = await resolveExistingVaultPath(this.vaultRoot, this.registryPath);
     const raw = JSON.parse(await readFile(absolutePath, "utf8")) as RegistryFile;
     if (!Array.isArray(raw.overlays)) {
       return [];
@@ -65,7 +71,7 @@ export class FrameworkRegistryStore {
   }
 
   private async writeRegistry(overlays: FrameworkOverlayRegistration[]): Promise<void> {
-    const absolutePath = resolveVaultPath(this.vaultRoot, this.registryPath);
+    const absolutePath = await resolveVaultPathForWrite(this.vaultRoot, this.registryPath);
     await mkdir(path.dirname(absolutePath), { recursive: true });
     const tempPath = `${absolutePath}.${randomUUID()}.tmp`;
     await writeFile(`${tempPath}`, `${JSON.stringify({ overlays }, null, 2)}\n`, "utf8");

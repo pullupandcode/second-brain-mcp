@@ -5,7 +5,7 @@ import { composeFrameworkSchemas, parseFrameworkSchema, type EffectiveFrameworkS
 import { type FrameworkOverlayRegistration, type FrameworkRegistryStore } from "./registry.js";
 import { getFrameworkPreset, type FrameworkPresetId } from "./presets.js";
 import type { VaultReader } from "../vault/reader.js";
-import { resolveVaultPath } from "../vault/path.js";
+import { resolveExistingVaultPath, resolveVaultPathForWrite } from "../vault/path.js";
 import { VaultWriteError } from "../vault/writer.js";
 
 export interface FrameworkManagementToolsOptions {
@@ -87,7 +87,7 @@ async function frameworkInit(
   input: FrameworkInitInput
 ): Promise<FrameworkInitResult> {
   const outputPath = input.outputPath ?? "_meta/framework.yaml";
-  const absolutePath = resolveVaultPath(options.reader.vaultRoot, outputPath);
+  const absolutePath = await resolveVaultPathForWrite(options.reader.vaultRoot, outputPath);
   const source = materializePresetSchema(input.framework);
   await mkdir(path.dirname(absolutePath), { recursive: true });
 
@@ -153,8 +153,8 @@ async function reloadFramework(
   };
 }
 
-function readVaultText(reader: VaultReader, vaultPath: string): Promise<string> {
-  return readFile(resolveVaultPath(reader.vaultRoot, vaultPath), "utf8");
+async function readVaultText(reader: VaultReader, vaultPath: string): Promise<string> {
+  return readFile(await resolveExistingVaultPath(reader.vaultRoot, vaultPath), "utf8");
 }
 
 function materializePresetSchema(framework: FrameworkPresetId): string {
