@@ -3,21 +3,21 @@
 # Copy this file to a machine-local path such as config.local.toml and update
 # vault_path, state_path, public_base_url, and auth settings for your setup.
 
-listen = "127.0.0.1:3000"
-public_base_url = "http://127.0.0.1:3000"
-vault_path = "~/Obsidian/vault"
-state_path = "~/Obsidian/mcp-test"
+listen = "" # example 127.0.0.1:3000
+public_base_url = "" # example http://127.0.0.1:3000
+vault_path = "/path/to/vault"
+state_path = "/path/to/state/folder"
 
 [auth]
-# Use "development" only for local loopback testing.
-mode = "jwt"
-audience = "second-brain-mcp"
+mode = "jwt" # Use "development" only for local loopback testing.
+audience = "second-brain-mcp" # or whatever you named it
 trusted_issuers = [
   "https://idp.example.com/application/o/second-brain-mcp-human/"
 ]
 discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
 jwks_cache_ttl_seconds = 3600
 jwt_algorithms = ["RS256"]
+
 # Local development only. These scopes are used in development mode when a
 # client does not send Authorization: Bearer scope=... .
 development_default_scopes = [
@@ -60,3 +60,7 @@ enabled = false
 [logging]
 # Keep false unless debugging locally; tool args can contain private vault text.
 log_args = false
+
+[framework]
+# Vault-relative path to the base framework schema.
+schema_path = ".meta/framework.yaml"
