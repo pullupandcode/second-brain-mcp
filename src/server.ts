@@ -287,6 +287,10 @@ function toMcpToolDefinition(tool: ToolDefinition): McpToolDefinition {
 }
 
 function inputSchemaForTool(tool: ToolDefinition): JsonObjectSchema {
+  if (tool.name === "daily_note_append") {
+    return dailyNoteAppendInputSchema();
+  }
+
   if (tool.name === "capture_for_date" || tool.name === "inbox_capture") {
     return captureInputSchema(tool.name === "inbox_capture");
   }
@@ -325,6 +329,32 @@ function inputSchemaForTool(tool: ToolDefinition): JsonObjectSchema {
     type: "object",
     properties: {},
     additionalProperties: true
+  };
+}
+
+function dailyNoteAppendInputSchema(): JsonObjectSchema {
+  return {
+    type: "object",
+    required: ["content", "base_sha256"],
+    properties: {
+      content: {
+        type: "string",
+        description: "Markdown content to append to the daily note section."
+      },
+      base_sha256: {
+        type: "string",
+        description: "Current daily note SHA-256 for optimistic concurrency."
+      },
+      date: {
+        type: "string",
+        description: "Optional ISO date. Defaults to today."
+      },
+      section: {
+        type: "string",
+        description: "Optional configured daily note section name."
+      }
+    },
+    additionalProperties: false
   };
 }
 

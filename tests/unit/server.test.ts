@@ -303,6 +303,53 @@ describe("createHttpServer", () => {
     });
   });
 
+  test("describes required daily append arguments in the MCP tool schema", async () => {
+    const baseUrl = await startServer();
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=daily:append",
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "daily-append-schema",
+        method: "tools/list"
+      })
+    });
+    const body = (await response.json()) as {
+      result: {
+        tools: Array<{
+          name: string;
+          inputSchema?: {
+            type: string;
+            required?: string[];
+            properties?: Record<string, { type?: string }>;
+            additionalProperties?: boolean;
+          };
+        }>;
+      };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.result.tools.find((tool) => tool.name === "daily_note_append")).toMatchObject({
+      inputSchema: {
+        type: "object",
+        required: ["content", "base_sha256"],
+        properties: {
+          content: { type: "string" },
+          base_sha256: { type: "string" },
+          date: { type: "string" },
+          section: { type: "string" }
+        },
+        additionalProperties: false
+      }
+    });
+  });
+
   test("uses configured development default scopes when authorization is missing", async () => {
     const baseUrl = await startServer(
       {
