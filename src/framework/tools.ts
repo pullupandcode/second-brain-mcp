@@ -86,7 +86,7 @@ async function frameworkInit(
   options: FrameworkManagementToolsOptions,
   input: FrameworkInitInput
 ): Promise<FrameworkInitResult> {
-  const outputPath = input.outputPath ?? "_meta/framework.yaml";
+  const outputPath = input.outputPath ?? defaultBaseSchemaPath(options);
   const absolutePath = await resolveVaultPathForWrite(options.reader.vaultRoot, outputPath);
   const source = materializePresetSchema(input.framework);
   await mkdir(path.dirname(absolutePath), { recursive: true });
@@ -122,13 +122,17 @@ async function composeFramework(
   options: FrameworkManagementToolsOptions
 ): Promise<EffectiveFrameworkSchema> {
   const base = parseFrameworkSchema(
-    await readVaultText(options.reader, options.baseSchemaPath ?? "_meta/framework.yaml")
+    await readVaultText(options.reader, defaultBaseSchemaPath(options))
   );
   const overlays = [];
   for (const registration of await options.registry.list()) {
     overlays.push(parseFrameworkSchema(await readVaultText(options.reader, registration.path)));
   }
   return composeFrameworkSchemas(base, overlays);
+}
+
+function defaultBaseSchemaPath(options: FrameworkManagementToolsOptions): string {
+  return options.baseSchemaPath ?? "_meta/framework.yaml";
 }
 
 async function reloadFramework(

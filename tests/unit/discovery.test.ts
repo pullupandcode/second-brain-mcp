@@ -29,6 +29,9 @@ const config: ServerConfig = {
   audit: {
     retentionMaxRows: 0
   },
+  framework: {
+    schemaPath: "_meta/framework.yaml"
+  },
   dailyNote: {
     captureDefaultPattern: "B"
   },

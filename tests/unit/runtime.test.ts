@@ -76,6 +76,9 @@ function testConfig(vaultPath: string, statePath: string): ServerConfig {
     audit: {
       retentionMaxRows: 0
     },
+    framework: {
+      schemaPath: "_meta/framework.yaml"
+    },
     ocr: {
       enabled: false
     },

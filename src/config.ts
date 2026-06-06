@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
 import { KNOWN_SCOPES, type Scope } from "./auth/scopes.js";
+import { normalizeVaultPath } from "./vault/path.js";
 
 export type CaptureDefaultPattern = "A" | "B";
 export type AuthMode = "jwt" | "development";
@@ -34,6 +35,9 @@ export interface ServerConfig {
   audit: {
     retentionMaxRows: number;
     archivePath?: string;
+  };
+  framework: {
+    schemaPath: string;
   };
   dailyNote: {
     captureDefaultPattern: CaptureDefaultPattern;
@@ -71,6 +75,9 @@ interface RawConfig {
   audit?: {
     retention_max_rows?: unknown;
     archive_path?: unknown;
+  };
+  framework?: {
+    schema_path?: unknown;
   };
   daily_note?: {
     capture_default_pattern?: unknown;
@@ -150,6 +157,7 @@ export function parseConfig(source: string): ServerConfig {
       cooldownSeconds: requireInteger(writes.cooldown_seconds, "writes.cooldown_seconds")
     },
     audit: readAuditConfig(raw.audit),
+    framework: readFrameworkConfig(raw.framework),
     dailyNote: {
       captureDefaultPattern
     },
@@ -159,6 +167,19 @@ export function parseConfig(source: string): ServerConfig {
     logging: {
       logArgs: requireBoolean(logging.log_args, "logging.log_args")
     }
+  };
+}
+
+function readFrameworkConfig(value: RawConfig["framework"]): ServerConfig["framework"] {
+  if (value === undefined) {
+    return { schemaPath: "_meta/framework.yaml" };
+  }
+  const framework = requireObject(value, "framework");
+  return {
+    schemaPath:
+      framework.schema_path === undefined
+        ? "_meta/framework.yaml"
+        : normalizeVaultPath(requireString(framework.schema_path, "framework.schema_path"))
   };
 }
 

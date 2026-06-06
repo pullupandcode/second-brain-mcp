@@ -73,7 +73,8 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
   const frameworkRegistry = new FrameworkRegistryStore({ vaultRoot: config.vaultPath });
   const frameworkManagementTools = createFrameworkManagementTools({
     reader,
-    registry: frameworkRegistry
+    registry: frameworkRegistry,
+    baseSchemaPath: config.framework.schemaPath
   });
   const frameworkRecordTools = async () =>
     createFrameworkRecordTools({

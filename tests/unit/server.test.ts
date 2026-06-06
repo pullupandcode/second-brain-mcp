@@ -37,6 +37,9 @@ const config: ServerConfig = {
   audit: {
     retentionMaxRows: 0
   },
+  framework: {
+    schemaPath: "_meta/framework.yaml"
+  },
   dailyNote: {
     captureDefaultPattern: "B"
   },
@@ -1702,6 +1705,9 @@ ignored_globs = ["**/*.sync-conflict-*"]
 [writes]
 cooldown_seconds = 0
 
+[framework]
+schema_path = "_meta/frameworks/runtime.yaml"
+
 [daily_note]
 capture_default_pattern = "A"
 
@@ -1724,7 +1730,7 @@ log_args = false
 
       expect(initResponse.response.status).toBe(200);
       expect(initResponse.result.structuredContent).toMatchObject({
-        path: "_meta/framework.yaml",
+        path: "_meta/frameworks/runtime.yaml",
         framework: "lyt",
         created: true,
         overwritten: false

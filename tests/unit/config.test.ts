@@ -57,9 +57,26 @@ describe("parseConfig", () => {
     expect(config.writes.cooldownSeconds).toBe(2);
     expect(config.audit.retentionMaxRows).toBe(0);
     expect(config.audit.archivePath).toBeUndefined();
+    expect(config.framework.schemaPath).toBe("_meta/framework.yaml");
     expect(config.dailyNote.captureDefaultPattern).toBe("B");
     expect(config.ocr.enabled).toBe(false);
     expect(config.logging.logArgs).toBe(false);
+  });
+
+  test("allows the framework schema path to be configured", () => {
+    const config = parseConfig(
+      validConfig.replace(
+        `[daily_note]
+capture_default_pattern = "B"`,
+        `[framework]
+schema_path = "_meta/frameworks/para.yaml"
+
+[daily_note]
+capture_default_pattern = "B"`
+      )
+    );
+
+    expect(config.framework.schemaPath).toBe("_meta/frameworks/para.yaml");
   });
 
   test("enables optional OCR tools from config", () => {

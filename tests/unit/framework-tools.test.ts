@@ -95,6 +95,40 @@ describe("createFrameworkManagementTools", () => {
     });
   });
 
+  test("uses a configured base schema path for compose and default init output", async () => {
+    await mkdir(join(vaultRoot, "_meta", "frameworks"), { recursive: true });
+    await writeFile(
+      join(vaultRoot, "_meta", "frameworks", "para.yaml"),
+      [
+        "version: 1",
+        "schema_kind: base",
+        "framework: para",
+        "types:",
+        "  project:",
+        "    description: Project",
+        "    folder: Projects"
+      ].join("\n")
+    );
+    const tools = createFrameworkManagementTools({
+      reader: new VaultReader({ vaultRoot, ignoredGlobs: [] }),
+      registry: new FrameworkRegistryStore({ vaultRoot }),
+      baseSchemaPath: "_meta/frameworks/para.yaml"
+    });
+
+    expect((await tools.framework_compose()).types.project?.folder).toBe("Projects");
+
+    await rm(join(vaultRoot, "_meta", "frameworks", "para.yaml"));
+    expect(await tools.framework_init({ framework: "zettel" })).toEqual({
+      path: "_meta/frameworks/para.yaml",
+      framework: "zettel",
+      created: true,
+      overwritten: false
+    });
+    expect(await readFile(join(vaultRoot, "_meta", "frameworks", "para.yaml"), "utf8")).toContain(
+      "framework: zettel"
+    );
+  });
+
   test("registers, lists, unregisters, and composes framework overlays", async () => {
     const tools = createFrameworkManagementTools({
       reader: new VaultReader({ vaultRoot, ignoredGlobs: [] }),

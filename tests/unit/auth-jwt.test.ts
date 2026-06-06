@@ -131,6 +131,7 @@ function config(): ServerConfig {
     index: { sqlitePath: ":memory:", watcherPolling: false, ignoredGlobs: [] },
     writes: { cooldownSeconds: 0 },
     audit: { retentionMaxRows: 0 },
+    framework: { schemaPath: "_meta/framework.yaml" },
     dailyNote: { captureDefaultPattern: "B" },
     ocr: { enabled: false },
     logging: { logArgs: false }
