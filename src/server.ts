@@ -287,49 +287,187 @@ function toMcpToolDefinition(tool: ToolDefinition): McpToolDefinition {
 }
 
 function inputSchemaForTool(tool: ToolDefinition): JsonObjectSchema {
-  if (tool.name === "daily_note_append") {
+  const schema = namedInputSchemaForTool(tool.name);
+  if (schema !== undefined) {
+    return schema;
+  }
+
+  return emptyInputSchema();
+}
+
+function namedInputSchemaForTool(name: string): JsonObjectSchema | undefined {
+  if (name === "read_note") {
+    return objectInputSchema(["path"], { path: stringProperty("Vault-relative markdown path.") });
+  }
+  if (name === "create_note") {
+    return objectInputSchema(["path", "content"], {
+      path: stringProperty("Vault-relative markdown path."),
+      content: stringProperty("Full note content."),
+      frontmatter: objectProperty("Optional frontmatter fields.")
+    });
+  }
+  if (name === "replace_note") {
+    return objectInputSchema(["path", "content", "base_sha256"], {
+      path: stringProperty("Vault-relative markdown path."),
+      content: stringProperty("Replacement note content."),
+      base_sha256: stringProperty("Current note SHA-256 for optimistic concurrency."),
+      frontmatter: objectProperty("Optional replacement frontmatter fields.")
+    });
+  }
+  if (name === "list_folder") {
+    return objectInputSchema(["path"], {
+      path: stringProperty("Vault-relative folder path. Use an empty string for the vault root."),
+      recursive: booleanProperty("Whether to list folders recursively.")
+    });
+  }
+  if (name === "search") {
+    return objectInputSchema(["query"], {
+      query: stringProperty("Search query."),
+      filters: objectProperty("Optional search filters, such as a folder prefix.")
+    });
+  }
+  if (name === "get_backlinks" || name === "get_outgoing_links") {
+    return objectInputSchema(["path"], { path: stringProperty("Vault-relative markdown path.") });
+  }
+  if (name === "update_frontmatter") {
+    return objectInputSchema(["path", "patch", "base_sha256"], {
+      path: stringProperty("Vault-relative markdown path."),
+      patch: objectProperty("Frontmatter keys and values to merge."),
+      base_sha256: stringProperty("Current note SHA-256 for optimistic concurrency.")
+    });
+  }
+  if (name === "replace_section_by_marker") {
+    return objectInputSchema(["path", "marker_name", "content", "base_sha256"], {
+      path: stringProperty("Vault-relative markdown path."),
+      marker_name: stringProperty("MCP marker section name."),
+      content: stringProperty("Replacement section content."),
+      base_sha256: stringProperty("Current note SHA-256 for optimistic concurrency.")
+    });
+  }
+  if (name === "daily_note_append") {
     return dailyNoteAppendInputSchema();
   }
-
-  if (tool.name === "capture_for_date" || tool.name === "inbox_capture") {
-    return captureInputSchema(tool.name === "inbox_capture");
+  if (name === "daily_note_get") {
+    return objectInputSchema([], {
+      date: stringProperty("Optional ISO date. Defaults to today.")
+    });
+  }
+  if (name === "daily_note_repair_markers") {
+    return objectInputSchema(["base_sha256"], {
+      base_sha256: stringProperty("Current daily note SHA-256 for optimistic concurrency."),
+      date: stringProperty("Optional ISO date. Defaults to today.")
+    });
+  }
+  if (name === "capture_for_date" || name === "inbox_capture") {
+    return captureInputSchema(name === "inbox_capture");
   }
 
-  if (tool.name === "create_record") {
-    return {
-      type: "object",
-      required: ["type", "title"],
-      properties: {
-        type: {
-          type: "string",
-          description: "Framework record type, such as capture, map, project, or source."
-        },
-        title: {
-          type: "string",
-          description: "Record title."
-        },
-        date: {
-          type: "string",
-          description: "Optional ISO date or datetime. Defaults to now."
-        },
-        body: {
-          type: "string",
-          description: "Optional note body appended after any configured template."
-        },
-        fields: {
-          type: "object",
-          description: "Optional frontmatter fields."
-        }
-      },
-      additionalProperties: false
-    };
+  if (name === "create_record") {
+    return objectInputSchema(["type", "title"], {
+      type: stringProperty("Framework record type, such as capture, map, project, or source."),
+      title: stringProperty("Record title."),
+      date: stringProperty("Optional ISO date or datetime. Defaults to now."),
+      body: stringProperty("Optional note body appended after any configured template."),
+      fields: objectProperty("Optional frontmatter fields.")
+    });
+  }
+  if (name === "find_maps") {
+    return objectInputSchema([], {
+      topic: stringProperty("Optional topic query.")
+    });
+  }
+  if (name === "link_to_page") {
+    return objectInputSchema(["notebook", "page_uuid"], {
+      notebook: stringProperty("Notebook UUID or identifier."),
+      page_uuid: stringProperty("Page UUID.")
+    });
+  }
+  if (name === "framework_init") {
+    return objectInputSchema(["framework"], {
+      framework: enumStringProperty(["lyt", "para", "zettel"], "Framework preset to initialize."),
+      output_path: stringProperty("Optional vault-relative schema output path."),
+      mode: enumStringProperty(["create", "overwrite"], "Optional initialization mode.")
+    });
+  }
+  if (name === "framework_register") {
+    return objectInputSchema(["name", "path"], {
+      name: stringProperty("Overlay name."),
+      path: stringProperty("Vault-relative overlay schema path."),
+      priority: integerProperty("Optional overlay priority. Lower values load first.")
+    });
+  }
+  if (name === "framework_unregister") {
+    return objectInputSchema(["name"], {
+      name: stringProperty("Overlay name to unregister.")
+    });
+  }
+  if (name === "ocr_notebook") {
+    return objectInputSchema(["identifier"], {
+      identifier: stringProperty("Notebook identifier."),
+      pages: integerArrayProperty("Optional page numbers to OCR."),
+      force: booleanProperty("Whether to force a new OCR job.")
+    });
+  }
+  if (name === "ocr_status") {
+    return objectInputSchema(["job_id"], {
+      job_id: stringProperty("OCR job id.")
+    });
+  }
+  if (name === "ocr_renumber_notebook") {
+    return objectInputSchema(["notebook_id"], {
+      notebook_id: stringProperty("Notebook id to renumber.")
+    });
   }
 
+  return undefined;
+}
+
+function emptyInputSchema(): JsonObjectSchema {
   return {
     type: "object",
     properties: {},
-    additionalProperties: true
+    additionalProperties: false
   };
+}
+
+function objectInputSchema(
+  required: string[],
+  properties: Record<string, unknown>
+): JsonObjectSchema {
+  return {
+    type: "object",
+    ...(required.length === 0 ? {} : { required }),
+    properties,
+    additionalProperties: false
+  };
+}
+
+function stringProperty(description: string): object {
+  return { type: "string", description };
+}
+
+function booleanProperty(description: string): object {
+  return { type: "boolean", description };
+}
+
+function integerProperty(description: string): object {
+  return { type: "integer", description };
+}
+
+function objectProperty(description: string): object {
+  return { type: "object", description };
+}
+
+function integerArrayProperty(description: string): object {
+  return {
+    type: "array",
+    items: { type: "integer" },
+    description
+  };
+}
+
+function enumStringProperty(values: string[], description: string): object {
+  return { type: "string", enum: values, description };
 }
 
 function dailyNoteAppendInputSchema(): JsonObjectSchema {

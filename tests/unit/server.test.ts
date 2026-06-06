@@ -7,7 +7,8 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { createHttpServer, startHttpServerFromConfigFile } from "../../src/server.js";
 import type { ServerConfig } from "../../src/config.js";
-import type { OperationalLogEntry, OperationalLogger, ToolHandlerMap } from "../../src/server.js";
+import type { CreateServerOptions, OperationalLogEntry, OperationalLogger, ToolHandlerMap } from "../../src/server.js";
+import { createToolRegistry } from "../../src/tools/registry.js";
 import { VaultWriteAuditStore } from "../../src/vault/audit.js";
 
 const config: ServerConfig = {
@@ -108,8 +109,11 @@ describe("createHttpServer", () => {
       description: expect.any(String),
       inputSchema: {
         type: "object",
-        properties: {},
-        additionalProperties: true
+        required: ["path"],
+        properties: {
+          path: { type: "string" }
+        },
+        additionalProperties: false
       }
     });
     expect(readNote).not.toHaveProperty("requiredScope");
@@ -198,8 +202,11 @@ describe("createHttpServer", () => {
       description: expect.any(String),
       inputSchema: {
         type: "object",
-        properties: {},
-        additionalProperties: true
+        required: ["path"],
+        properties: {
+          path: { type: "string" }
+        },
+        additionalProperties: false
       }
     });
     expect(readNote).not.toHaveProperty("requiredScope");
@@ -348,6 +355,92 @@ describe("createHttpServer", () => {
         additionalProperties: false
       }
     });
+  });
+
+  test("advertises argument schemas for all argument-taking tools", async () => {
+    const baseUrl = await startServer(
+      {},
+      {
+        ...config,
+        ocr: { enabled: true }
+      },
+      undefined,
+      createToolRegistry({ ocrEnabled: true })
+    );
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:read vault:write vault:capture daily:append admin",
+        "content-type": "application/json",
+        "mcp-method": "tools/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "all-tool-schemas",
+        method: "tools/list"
+      })
+    });
+    const body = (await response.json()) as {
+      result: {
+        tools: Array<{
+          name: string;
+          inputSchema?: {
+            required?: string[];
+            properties?: Record<string, unknown>;
+            additionalProperties?: boolean;
+          };
+        }>;
+      };
+    };
+    const byName = new Map(body.result.tools.map((tool) => [tool.name, tool]));
+
+    const expectedSchemas: Array<{
+      name: string;
+      required: string[];
+      properties: string[];
+    }> = [
+      { name: "read_note", required: ["path"], properties: ["path"] },
+      { name: "create_note", required: ["path", "content"], properties: ["path", "content", "frontmatter"] },
+      {
+        name: "replace_note",
+        required: ["path", "content", "base_sha256"],
+        properties: ["path", "content", "base_sha256", "frontmatter"]
+      },
+      { name: "list_folder", required: ["path"], properties: ["path", "recursive"] },
+      { name: "search", required: ["query"], properties: ["query", "filters"] },
+      { name: "get_backlinks", required: ["path"], properties: ["path"] },
+      { name: "get_outgoing_links", required: ["path"], properties: ["path"] },
+      { name: "update_frontmatter", required: ["path", "patch", "base_sha256"], properties: ["path", "patch", "base_sha256"] },
+      {
+        name: "replace_section_by_marker",
+        required: ["path", "marker_name", "content", "base_sha256"],
+        properties: ["path", "marker_name", "content", "base_sha256"]
+      },
+      { name: "inbox_capture", required: ["content", "source_client"], properties: ["content", "source_client", "date", "source_id", "capture_type", "title", "strategy"] },
+      { name: "capture_for_date", required: ["content", "source_client"], properties: ["content", "source_client", "date", "source_id", "capture_type", "title"] },
+      { name: "daily_note_get", required: [], properties: ["date"] },
+      { name: "daily_note_append", required: ["content", "base_sha256"], properties: ["content", "base_sha256", "date", "section"] },
+      { name: "daily_note_repair_markers", required: ["base_sha256"], properties: ["base_sha256", "date"] },
+      { name: "create_record", required: ["type", "title"], properties: ["type", "title", "date", "body", "fields"] },
+      { name: "find_maps", required: [], properties: ["topic"] },
+      { name: "link_to_page", required: ["notebook", "page_uuid"], properties: ["notebook", "page_uuid"] },
+      { name: "framework_init", required: ["framework"], properties: ["framework", "output_path", "mode"] },
+      { name: "framework_register", required: ["name", "path"], properties: ["name", "path", "priority"] },
+      { name: "framework_unregister", required: ["name"], properties: ["name"] },
+      { name: "ocr_notebook", required: ["identifier"], properties: ["identifier", "pages", "force"] },
+      { name: "ocr_status", required: ["job_id"], properties: ["job_id"] },
+      { name: "ocr_renumber_notebook", required: ["notebook_id"], properties: ["notebook_id"] }
+    ];
+
+    expect(response.status).toBe(200);
+    for (const expected of expectedSchemas) {
+      const schema = byName.get(expected.name)?.inputSchema;
+      expect(schema?.required ?? []).toEqual(expected.required);
+      expect(Object.keys(schema?.properties ?? {}).sort()).toEqual(expected.properties.sort());
+      expect(schema?.additionalProperties).toBe(false);
+    }
   });
 
   test("uses configured development default scopes when authorization is missing", async () => {
@@ -1981,11 +2074,13 @@ log_args = false
 async function startServer(
   toolHandlers: ToolHandlerMap = {},
   serverConfig: ServerConfig = config,
-  operationalLogger?: OperationalLogger
+  operationalLogger?: OperationalLogger,
+  tools?: CreateServerOptions["tools"]
 ): Promise<string> {
   const server = createHttpServer({
     config: serverConfig,
     toolHandlers,
+    ...(tools === undefined ? {} : { tools }),
     ...(operationalLogger === undefined ? {} : { operationalLogger })
   });
   servers.push(server);
