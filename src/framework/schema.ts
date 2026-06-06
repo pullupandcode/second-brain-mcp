@@ -8,6 +8,16 @@ export interface FrameworkTypeDefinition {
   folder: string;
   filename?: string;
   template?: string;
+  frontmatter?: Record<string, FrameworkFrontmatterDefinition>;
+}
+
+export type FrameworkFrontmatterDefaultValue = string | number | boolean | string[];
+
+export interface FrameworkFrontmatterDefinition {
+  required?: boolean;
+  type?: string;
+  format?: string;
+  defaultValue?: FrameworkFrontmatterDefaultValue;
 }
 
 export interface FrameworkSchema {
@@ -29,7 +39,7 @@ export interface EffectiveFrameworkSchema extends FrameworkSchema {
   preset?: FrameworkPreset;
 }
 
-type ParsedYamlValue = string | number | boolean | ParsedYamlObject;
+type ParsedYamlValue = string | number | boolean | string[] | ParsedYamlObject;
 type ParsedYamlObject = { [key: string]: ParsedYamlValue };
 
 const VALID_FRAMEWORKS = [...FRAMEWORK_PRESET_IDS, "custom"] as const;
@@ -122,10 +132,47 @@ function readTypes(value: ParsedYamlValue | undefined): Record<string, Framework
       folder,
       description: readOptionalString(rawType.description, `types.${name}.description`),
       filename: readOptionalString(rawType.filename, `types.${name}.filename`),
-      template: readOptionalString(rawType.template, `types.${name}.template`)
+      template: readOptionalString(rawType.template, `types.${name}.template`),
+      frontmatter: readFrontmatter(rawType.frontmatter, `types.${name}.frontmatter`)
     }) as FrameworkTypeDefinition;
   }
   return types;
+}
+
+function readFrontmatter(
+  value: ParsedYamlValue | undefined,
+  name: string
+): Record<string, FrameworkFrontmatterDefinition> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isObject(value)) {
+    throw new Error(`${name} must be an object`);
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([fieldName, rawDefinition]) => [
+      fieldName,
+      readFrontmatterDefinition(rawDefinition, `${name}.${fieldName}`)
+    ])
+  );
+}
+
+function readFrontmatterDefinition(
+  value: ParsedYamlValue,
+  name: string
+): FrameworkFrontmatterDefinition {
+  if (isObject(value)) {
+    return withoutUndefined({
+      required: readOptionalBoolean(value.required, `${name}.required`),
+      type: readOptionalString(value.type, `${name}.type`),
+      format: readOptionalString(value.format, `${name}.format`)
+    }) as FrameworkFrontmatterDefinition;
+  }
+  if (isDefaultValue(value)) {
+    return { defaultValue: value };
+  }
+  throw new Error(`${name} must be a field declaration or default value`);
 }
 
 function readInbox(value: ParsedYamlValue | undefined): FrameworkSchema["inbox"] {
@@ -153,6 +200,16 @@ function readOptionalString(value: ParsedYamlValue | undefined, name: string): s
   }
   if (typeof value !== "string") {
     throw new Error(`${name} must be a string`);
+  }
+  return value;
+}
+
+function readOptionalBoolean(value: ParsedYamlValue | undefined, name: string): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "boolean") {
+    throw new Error(`${name} must be a boolean`);
   }
   return value;
 }
@@ -191,20 +248,30 @@ function parseYamlSubset(source: string): ParsedYamlObject {
       parent[key] = child;
       stack.push({ indent, object: child });
     } else {
-      parent[key] = parseScalar(rawValue);
+      parent[key] = parseScalar(stripInlineComment(rawValue));
     }
   }
 
   return root;
 }
 
-function parseScalar(raw: string): string | number | boolean {
+function stripInlineComment(raw: string): string {
+  return raw.replace(/\s+#.*$/, "");
+}
+
+function parseScalar(raw: string): string | number | boolean | string[] | ParsedYamlObject {
   const trimmed = raw.trim();
   if (trimmed === "true") {
     return true;
   }
   if (trimmed === "false") {
     return false;
+  }
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return parseInlineArray(trimmed);
+  }
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return parseInlineObject(trimmed);
   }
   const asNumber = Number(trimmed);
   if (Number.isFinite(asNumber) && String(asNumber) === trimmed) {
@@ -213,8 +280,44 @@ function parseScalar(raw: string): string | number | boolean {
   return trimmed.replace(/^["']|["']$/g, "");
 }
 
+function parseInlineArray(raw: string): string[] {
+  const body = raw.slice(1, -1).trim();
+  if (body.length === 0) {
+    return [];
+  }
+  return body.split(",").map((item) => item.trim().replace(/^["']|["']$/g, ""));
+}
+
+function parseInlineObject(raw: string): ParsedYamlObject {
+  const body = raw.slice(1, -1).trim();
+  if (body.length === 0) {
+    return {};
+  }
+
+  const object: ParsedYamlObject = {};
+  for (const entry of body.split(",")) {
+    const separator = entry.indexOf(":");
+    if (separator === -1) {
+      continue;
+    }
+    const key = entry.slice(0, separator).trim();
+    const value = entry.slice(separator + 1).trim();
+    object[key] = parseScalar(value);
+  }
+  return object;
+}
+
 function isObject(value: unknown): value is ParsedYamlObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isDefaultValue(value: ParsedYamlValue): value is FrameworkFrontmatterDefaultValue {
+  return (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    (Array.isArray(value) && value.every((item) => typeof item === "string"))
+  );
 }
 
 function withoutUndefined<T extends Record<string, unknown>>(object: T): Partial<T> {

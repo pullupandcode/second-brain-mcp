@@ -145,12 +145,19 @@ async function createRecord(
     type: input.type,
     title: input.title,
     date: formatDate(date, "YYYY-MM-DD"),
-    ...normalizeRecordFields(input)
+    ...normalizeRecordFields(input, definition, date)
   });
 }
 
-function normalizeRecordFields(input: CreateRecordInput): Record<string, FrontmatterValue> {
+function normalizeRecordFields(
+  input: CreateRecordInput,
+  definition: FrameworkTypeDefinition,
+  date: Date
+): Record<string, FrontmatterValue> {
   const fields = { ...(input.fields ?? {}) };
+  if (fields.scheduled === undefined && definition.frontmatter?.scheduled !== undefined) {
+    fields.scheduled = formatScheduledDate(date, definition.frontmatter.scheduled.format);
+  }
   if (input.type === "meeting" && fields.attendees !== undefined) {
     fields.attendees = normalizeLinkField(fields.attendees);
   }
@@ -203,8 +210,11 @@ function expandRecordPath(
 function expandPattern(pattern: string, title: string, date: Date): string {
   return pattern
     .replaceAll("{title}", sanitizeTitle(title))
+    .replaceAll("{date:YYYY}", formatDate(date, "YYYY"))
+    .replaceAll("{date:YYYY-MM}", formatDate(date, "YYYY-MM"))
     .replaceAll("{date:YYYY-MM-DD}", formatDate(date, "YYYY-MM-DD"))
-    .replaceAll("{date:YYYY-MM-DD HH-mm}", formatDate(date, "YYYY-MM-DD HH-mm"));
+    .replaceAll("{date:YYYY-MM-DD HH-mm}", formatDate(date, "YYYY-MM-DD HH-mm"))
+    .replaceAll("{quarter}", String(getQuarter(date)));
 }
 
 function sanitizeTitle(title: string): string {
@@ -238,14 +248,43 @@ function joinBody(templateBody: string, body: string | undefined): string {
   return `${templateBody.replace(/\s+$/, "")}\n\n${body}`;
 }
 
-function formatDate(date: Date, format: "YYYY-MM-DD" | "YYYY-MM-DD HH-mm"): string {
+function formatDate(
+  date: Date,
+  format: "YYYY" | "YYYY-MM" | "YYYY-MM-DD" | "YYYY-MM-DD HH-mm"
+): string {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   const day = String(date.getUTCDate()).padStart(2, "0");
+  if (format === "YYYY") {
+    return `${year}`;
+  }
+  if (format === "YYYY-MM") {
+    return `${year}-${month}`;
+  }
   if (format === "YYYY-MM-DD") {
     return `${year}-${month}-${day}`;
   }
   const hour = String(date.getUTCHours()).padStart(2, "0");
   const minute = String(date.getUTCMinutes()).padStart(2, "0");
   return `${year}-${month}-${day} ${hour}-${minute}`;
+}
+
+function formatScheduledDate(date: Date, format: string | undefined): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hour24 = date.getUTCHours();
+  const minute = String(date.getUTCMinutes()).padStart(2, "0");
+  const suffix = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  const paddedHour12 = String(hour12).padStart(2, "0");
+
+  if (format === "YYYY-MM-DD H:mm a") {
+    return `${year}-${month}-${day} ${hour12}:${minute} ${suffix}`;
+  }
+  return `${year}-${month}-${day} ${paddedHour12}:${minute} ${suffix}`;
+}
+
+function getQuarter(date: Date): number {
+  return Math.floor(date.getUTCMonth() / 3) + 1;
 }

@@ -29,6 +29,39 @@ types:
     });
   });
 
+  test("parses frontmatter field declarations from type definitions", () => {
+    const schema = parseFrameworkSchema(`
+version: 1
+schema_kind: base
+framework: custom
+types:
+  meeting:
+    folder: Meetings
+    frontmatter:
+      collection: ["[[Meetings]]"]
+      scheduled: { required: true, format: "YYYY-MM-DD hh:mm a" }
+      attendees: { required: false, type: linklist }
+      capture_type: { required: false }      # e.g. "thought"
+`);
+
+    expect(schema.types.meeting?.frontmatter).toEqual({
+      collection: {
+        defaultValue: ["[[Meetings]]"]
+      },
+      scheduled: {
+        required: true,
+        format: "YYYY-MM-DD hh:mm a"
+      },
+      attendees: {
+        required: false,
+        type: "linklist"
+      },
+      capture_type: {
+        required: false
+      }
+    });
+  });
+
   test("rejects unknown frameworks", () => {
     expect(() =>
       parseFrameworkSchema(`

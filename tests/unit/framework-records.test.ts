@@ -77,6 +77,80 @@ describe("createFrameworkRecordTools", () => {
     expect(audit.listRecentWrites().map((row) => row.operation)).toEqual(["create_note"]);
   });
 
+  test("expands monthly and quarterly review filename tokens", async () => {
+    const schema = effectiveSchema({
+      monthly_review: {
+        description: "Monthly review.",
+        folder: "Calendar/Reviews/Monthly",
+        filename: "{date:YYYY-MM} Monthly Review.md"
+      },
+      quarterly_review: {
+        description: "Quarterly review.",
+        folder: "Calendar/Reviews",
+        filename: "{date:YYYY} Q{quarter} Quarterly Review.md"
+      }
+    });
+    const tools = createFrameworkRecordTools({
+      schema,
+      reader: new VaultReader({ vaultRoot, ignoredGlobs: [] }),
+      writeTools: createVaultWriteTools(new VaultWriter({ vaultRoot, cooldownSeconds: 0 }), audit)
+    });
+
+    const monthly = await tools.create_record({
+      type: "monthly_review",
+      title: "Ignored",
+      date: "2026-05-31T12:00:00Z"
+    });
+    const quarterly = await tools.create_record({
+      type: "quarterly_review",
+      title: "Ignored",
+      date: "2026-05-31T12:00:00Z"
+    });
+
+    expect(monthly.path).toBe("Calendar/Reviews/Monthly/2026-05 Monthly Review.md");
+    expect(quarterly.path).toBe("Calendar/Reviews/2026 Q2 Quarterly Review.md");
+  });
+
+  test("adds scheduled frontmatter from the record date when schema declares scheduled", async () => {
+    const schema = effectiveSchema({
+      appointment: {
+        description: "An appointment record.",
+        folder: "Calendar/Records/Appointments",
+        filename: "{date:YYYY-MM-DD} [{title}].md",
+        frontmatter: {
+          scheduled: {
+            required: true,
+            format: "YYYY-MM-DD hh:mm a"
+          }
+        }
+      }
+    });
+    const tools = createFrameworkRecordTools({
+      schema,
+      reader: new VaultReader({ vaultRoot, ignoredGlobs: [] }),
+      writeTools: createVaultWriteTools(new VaultWriter({ vaultRoot, cooldownSeconds: 0 }), audit)
+    });
+
+    const result = await tools.create_record({
+      type: "appointment",
+      title: "Dentist",
+      date: "2026-05-07T15:30:00Z",
+      body: "Bring forms"
+    });
+
+    expect(await readFile(join(vaultRoot, result.path), "utf8")).toBe(
+      [
+        "---",
+        'type: "appointment"',
+        'title: "Dentist"',
+        'date: "2026-05-07"',
+        'scheduled: "2026-05-07 03:30 PM"',
+        "---",
+        "Bring forms"
+      ].join("\n")
+    );
+  });
+
   test("lists schema record types with descriptions and folders", () => {
     const schema = effectiveSchema({
       meeting: {
