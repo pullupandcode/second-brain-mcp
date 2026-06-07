@@ -78,12 +78,46 @@ describe("VaultIndex", () => {
 
     index.close();
   });
+
+  test("excludes security blocked paths from search, links, source lookup, and conflicts", async () => {
+    await mkdir(join(vaultRoot, "Private"), { recursive: true });
+    await writeFile(
+      join(vaultRoot, "Private", "Secret.md"),
+      `---
+tags: [secret]
+source_id: private-secret
+---
+# Secret
+
+The private alpaca plan links to [[Home]].
+`
+    );
+    await writeFile(
+      join(vaultRoot, "Private", "Secret.sync-conflict-local.md"),
+      "# Private conflict\n"
+    );
+    const index = await buildIndex(["Private/**"]);
+
+    expect(index.search("private").map((result) => result.path)).toEqual([]);
+    expect(index.search("", { tag: "secret" }).map((result) => result.path)).toEqual([]);
+    expect(index.findBySourceId("private-secret")).toBeUndefined();
+    expect(index.getBacklinks("Home")).toEqual(["Calendar/Days/2026-05-05.md"]);
+    expect(index.listConflicts()).toEqual([
+      {
+        canonical: "Calendar/Days/2026-05-05.md",
+        conflicts: ["Calendar/Days/2026-05-05.sync-conflict-local.md"]
+      }
+    ]);
+
+    index.close();
+  });
 });
 
-async function buildIndex(): Promise<VaultIndex> {
+async function buildIndex(blockedPaths: string[] = []): Promise<VaultIndex> {
   const reader = new VaultReader({
     vaultRoot,
-    ignoredGlobs: ["**/*.sync-conflict-*"]
+    ignoredGlobs: ["**/*.sync-conflict-*"],
+    blockedPaths
   });
   const index = new VaultIndex({ reader, sqlitePath: ":memory:" });
   await index.rebuild();

@@ -64,6 +64,32 @@ describe("VaultWriter", () => {
     });
   });
 
+  test("rejects writes to security blocked paths", async () => {
+    const blockedWriter = new VaultWriter({
+      vaultRoot,
+      cooldownSeconds: 0,
+      blockedPaths: ["Private/**"]
+    });
+    await mkdir(join(vaultRoot, "Private"), { recursive: true });
+
+    await expect(blockedWriter.createNote("Private/New.md", "blocked")).rejects.toMatchObject({
+      code: "path_blocked"
+    });
+
+    await writeFile(join(vaultRoot, "Private", "Existing.md"), "existing");
+    const base = await new VaultReader({
+      vaultRoot,
+      ignoredGlobs: [],
+      blockedPaths: []
+    }).readNote("Private/Existing.md");
+    await expect(
+      blockedWriter.replaceNote("Private/Existing.md", "blocked", base.currentSha256)
+    ).rejects.toMatchObject({
+      code: "path_blocked"
+    });
+    expect(await readFile(join(vaultRoot, "Private", "Existing.md"), "utf8")).toBe("existing");
+  });
+
   test("replaces a note when base hash matches", async () => {
     await writer.createNote("Notes/New.md", "Hello");
     const base = await reader.readNote("Notes/New.md");

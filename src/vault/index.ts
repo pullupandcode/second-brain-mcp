@@ -210,6 +210,9 @@ export class VaultIndex {
     const entries = await readdir(absolutePath, { withFileTypes: true });
     for (const entry of entries) {
       const childVaultPath = normalizeVaultPath(vaultPath.length === 0 ? entry.name : `${vaultPath}/${entry.name}`);
+      if (this.reader.isBlocked(childVaultPath)) {
+        continue;
+      }
       const childAbsolutePath = path.join(absolutePath, entry.name);
       const childStat = await stat(childAbsolutePath);
       if (childStat.isDirectory()) {

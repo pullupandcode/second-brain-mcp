@@ -28,6 +28,10 @@ export interface ServerConfig {
     sqlitePath: string;
     watcherPolling: boolean;
     ignoredGlobs: string[];
+    blockedPaths: string[];
+  };
+  security: {
+    blockedPaths: string[];
   };
   writes: {
     cooldownSeconds: number;
@@ -68,6 +72,10 @@ interface RawConfig {
     sqlite_path?: unknown;
     watcher_polling?: unknown;
     ignored_globs?: unknown;
+    blocked_paths?: unknown;
+  };
+  security?: {
+    blocked_paths?: unknown;
   };
   writes?: {
     cooldown_seconds?: unknown;
@@ -151,8 +159,10 @@ export function parseConfig(source: string): ServerConfig {
           ? index.sqlite_path
           : join(statePath, "index.sqlite"),
       watcherPolling: requireBoolean(index.watcher_polling, "index.watcher_polling"),
-      ignoredGlobs: requireStringArray(index.ignored_globs, "index.ignored_globs")
+      ignoredGlobs: readVaultPatternArray(index.ignored_globs, "index.ignored_globs"),
+      blockedPaths: readOptionalVaultPatternArray(index.blocked_paths, "index.blocked_paths")
     },
+    security: readSecurityConfig(raw.security),
     writes: {
       cooldownSeconds: requireInteger(writes.cooldown_seconds, "writes.cooldown_seconds")
     },
@@ -170,6 +180,16 @@ export function parseConfig(source: string): ServerConfig {
   };
 }
 
+function readSecurityConfig(value: RawConfig["security"]): ServerConfig["security"] {
+  if (value === undefined) {
+    return { blockedPaths: [] };
+  }
+  const security = requireObject(value, "security");
+  return {
+    blockedPaths: readOptionalVaultPatternArray(security.blocked_paths, "security.blocked_paths")
+  };
+}
+
 function readFrameworkConfig(value: RawConfig["framework"]): ServerConfig["framework"] {
   if (value === undefined) {
     return { schemaPath: "_meta/framework.yaml" };
@@ -181,6 +201,17 @@ function readFrameworkConfig(value: RawConfig["framework"]): ServerConfig["frame
         ? "_meta/framework.yaml"
         : normalizeVaultPath(requireString(framework.schema_path, "framework.schema_path"))
   };
+}
+
+function readOptionalVaultPatternArray(value: unknown, name: string): string[] {
+  if (value === undefined) {
+    return [];
+  }
+  return readVaultPatternArray(value, name);
+}
+
+function readVaultPatternArray(value: unknown, name: string): string[] {
+  return requireStringArray(value, name).map(normalizeVaultPath);
 }
 
 function readAuditConfig(value: RawConfig["audit"]): ServerConfig["audit"] {

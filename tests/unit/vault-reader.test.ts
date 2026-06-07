@@ -66,6 +66,23 @@ describe("VaultReader", () => {
     expect(paths).toEqual(["Atlas/Maps/Home.md", "Calendar/Days/2026-05-05.md"]);
   });
 
+  test("blocks configured security paths from reads and folder listings", async () => {
+    await mkdir(join(vaultRoot, "Private"), { recursive: true });
+    await writeFile(join(vaultRoot, "Private", "Secret.md"), "# Secret\n");
+    const reader = new VaultReader({
+      vaultRoot,
+      ignoredGlobs: [".second-brain/**", ".trash/**"],
+      blockedPaths: ["Private/**"]
+    });
+
+    await expect(reader.readNote("Private/Secret.md")).rejects.toThrow(/Vault path is blocked/);
+    await expect(reader.listFolder("Private", { recursive: true })).rejects.toThrow(
+      /Vault path is blocked/
+    );
+    expect((await reader.listFolder("", { recursive: true })).map((entry) => entry.path).sort())
+      .toEqual(["Atlas/Maps/Home.md", "Calendar/Days/2026-05-05.md", "Calendar/Days/conflict.sync-conflict-abc.md"]);
+  });
+
   test("rejects traversal reads", async () => {
     const reader = new VaultReader({ vaultRoot, ignoredGlobs: [] });
 

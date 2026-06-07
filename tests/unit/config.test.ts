@@ -54,6 +54,8 @@ describe("parseConfig", () => {
     expect(config.index.sqlitePath).toBe("/var/lib/second-brain-mcp/index.sqlite");
     expect(config.index.watcherPolling).toBe(false);
     expect(config.index.ignoredGlobs).toEqual([".second-brain/workspace*", ".trash/**"]);
+    expect(config.index.blockedPaths).toEqual([]);
+    expect(config.security.blockedPaths).toEqual([]);
     expect(config.writes.cooldownSeconds).toBe(2);
     expect(config.audit.retentionMaxRows).toBe(0);
     expect(config.audit.archivePath).toBeUndefined();
@@ -77,6 +79,27 @@ capture_default_pattern = "B"`
     );
 
     expect(config.framework.schemaPath).toBe("_meta/frameworks/para.yaml");
+  });
+
+  test("parses index and security blocked paths", () => {
+    const config = parseConfig(
+      validConfig.replace(
+        `[index]
+watcher_polling = false
+ignored_globs = [".second-brain/workspace*", ".trash/**"]`,
+        `[index]
+watcher_polling = false
+ignored_globs = [".second-brain/workspace*", ".trash/**"]
+blocked_paths = ["Cache/**"]
+
+[security]
+blocked_paths = ["Private/**", "**/*.secret.md"]`
+      )
+    );
+
+    expect(config.index.ignoredGlobs).toEqual([".second-brain/workspace*", ".trash/**"]);
+    expect(config.index.blockedPaths).toEqual(["Cache/**"]);
+    expect(config.security.blockedPaths).toEqual(["Private/**", "**/*.secret.md"]);
   });
 
   test("enables optional OCR tools from config", () => {

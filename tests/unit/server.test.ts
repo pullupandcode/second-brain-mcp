@@ -29,7 +29,11 @@ const config: ServerConfig = {
   index: {
     sqlitePath: "/state/index.sqlite",
     watcherPolling: false,
-    ignoredGlobs: []
+    ignoredGlobs: [],
+    blockedPaths: []
+  },
+  security: {
+    blockedPaths: []
   },
   writes: {
     cooldownSeconds: 2

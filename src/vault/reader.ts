@@ -4,10 +4,12 @@ import path from "node:path";
 
 import { parseMarkdown, type ParsedMarkdown } from "./markdown.js";
 import { isMarkdownPath, normalizeVaultPath, resolveExistingVaultPath } from "./path.js";
+import { matchesVaultPathPattern, pathMatchesAnyPattern } from "./policy.js";
 
 export interface VaultReaderOptions {
   vaultRoot: string;
   ignoredGlobs: string[];
+  blockedPaths?: string[];
 }
 
 export interface ReadNoteResult {
@@ -25,14 +27,19 @@ export interface FolderEntry {
 export class VaultReader {
   readonly vaultRoot: string;
   readonly ignoredGlobs: string[];
+  readonly blockedPaths: string[];
 
   constructor(options: VaultReaderOptions) {
     this.vaultRoot = path.resolve(options.vaultRoot);
     this.ignoredGlobs = options.ignoredGlobs;
+    this.blockedPaths = options.blockedPaths ?? [];
   }
 
   async readNote(inputPath: string): Promise<ReadNoteResult> {
     const vaultPath = normalizeVaultPath(inputPath);
+    if (this.isBlocked(vaultPath)) {
+      throw new Error("Vault path is blocked");
+    }
     if (this.isIgnored(vaultPath)) {
       throw new Error(`Vault path is ignored: ${vaultPath}`);
     }
@@ -54,6 +61,9 @@ export class VaultReader {
     options: { recursive?: boolean } = {}
   ): Promise<FolderEntry[]> {
     const vaultPath = normalizeVaultPath(inputPath);
+    if (this.isBlocked(vaultPath)) {
+      throw new Error("Vault path is blocked");
+    }
     const absolutePath = await resolveExistingVaultPath(this.vaultRoot, vaultPath);
     const entries: FolderEntry[] = [];
     await this.collectFolderEntries(absolutePath, vaultPath, options.recursive === true, entries);
@@ -61,7 +71,11 @@ export class VaultReader {
   }
 
   isIgnored(vaultPath: string): boolean {
-    return this.ignoredGlobs.some((pattern) => matchesGlob(pattern, vaultPath));
+    return pathMatchesAnyPattern(this.ignoredGlobs, vaultPath);
+  }
+
+  isBlocked(vaultPath: string): boolean {
+    return pathMatchesAnyPattern(this.blockedPaths, vaultPath);
   }
 
   private async collectFolderEntries(
@@ -75,6 +89,9 @@ export class VaultReader {
     for (const entry of dirEntries) {
       const childVaultPath = vaultPath.length === 0 ? entry.name : `${vaultPath}/${entry.name}`;
       const normalizedChild = normalizeVaultPath(childVaultPath);
+      if (this.isBlocked(normalizedChild)) {
+        continue;
+      }
       if (this.isIgnored(normalizedChild)) {
         continue;
       }
@@ -98,24 +115,4 @@ function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-export function matchesGlob(pattern: string, vaultPath: string): boolean {
-  if (pattern.endsWith("/**")) {
-    const prefix = pattern.slice(0, -"/**".length);
-    return vaultPath === prefix || vaultPath.startsWith(`${prefix}/`);
-  }
-  if (pattern === "**/*.sync-conflict-*") {
-    return path.basename(vaultPath).includes(".sync-conflict-");
-  }
-  if (pattern.startsWith("**/*")) {
-    const suffix = pattern.slice("**/*".length);
-    return vaultPath.endsWith(suffix);
-  }
-  if (pattern.includes("*")) {
-    const escaped = pattern
-      .split("*")
-      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-      .join(".*");
-    return new RegExp(`^${escaped}$`).test(vaultPath);
-  }
-  return vaultPath === pattern;
-}
+export const matchesGlob = matchesVaultPathPattern;

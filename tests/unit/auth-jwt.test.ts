@@ -128,7 +128,8 @@ function config(): ServerConfig {
       jwksCacheTtlSeconds: 3600,
       jwtAlgorithms: ["RS256"]
     },
-    index: { sqlitePath: ":memory:", watcherPolling: false, ignoredGlobs: [] },
+    index: { sqlitePath: ":memory:", watcherPolling: false, ignoredGlobs: [], blockedPaths: [] },
+    security: { blockedPaths: [] },
     writes: { cooldownSeconds: 0 },
     audit: { retentionMaxRows: 0 },
     framework: { schemaPath: "_meta/framework.yaml" },

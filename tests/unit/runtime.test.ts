@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -43,6 +43,33 @@ describe("createRuntimeToolHandlers", () => {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  test("enforces configured security blocked paths across runtime tools", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-runtime-blocked-"));
+    const vaultPath = join(tempRoot, "vault");
+    const statePath = join(tempRoot, "state");
+    await mkdir(join(vaultPath, "Private"), { recursive: true });
+    await mkdir(statePath, { recursive: true });
+    await writeFile(join(vaultPath, "Private", "Secret.md"), "# Secret\n\nprivate runtime text\n");
+
+    const config = testConfig(vaultPath, statePath);
+    config.security.blockedPaths = ["Private/**"];
+    const runtime = await createRuntimeToolHandlers(config);
+    try {
+      await expect(runtime.handlers.read_note?.({ path: "Private/Secret.md" })).rejects.toThrow(
+        /Vault path is blocked/
+      );
+      await expect(
+        runtime.handlers.create_note?.({ path: "Private/New.md", content: "blocked" })
+      ).rejects.toMatchObject({ code: "path_blocked" });
+      expect((await runtime.handlers.search?.({ query: "private" }))?.structuredContent).toEqual({
+        result: []
+      });
+    } finally {
+      runtime.close();
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 function testConfig(vaultPath: string, statePath: string): ServerConfig {
@@ -65,7 +92,11 @@ function testConfig(vaultPath: string, statePath: string): ServerConfig {
     index: {
       sqlitePath: ":memory:",
       watcherPolling: false,
-      ignoredGlobs: []
+      ignoredGlobs: [],
+      blockedPaths: []
+    },
+    security: {
+      blockedPaths: []
     },
     writes: {
       cooldownSeconds: 0

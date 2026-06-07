@@ -107,7 +107,35 @@ Typical identity-provider setup:
 
 Invalid or missing JWTs return HTTP `401` with `WWW-Authenticate: Bearer`. Valid tokens without the required scope receive JSON-RPC `forbidden_scope`.
 
-## 2. Enable OCR Tools
+## 2. Configure Vault Boundaries
+
+Use `security.blocked_paths` for vault areas that must be guaranteed off-limits to MCP clients:
+
+```toml
+[security]
+blocked_paths = [
+  "Private/**",
+  "Journal/Raw/**",
+  "**/*.secret.md"
+]
+```
+
+Matching paths are denied for reads, folder listings, search/index results, backlinks/outgoing links, conflict listings, primitive writes, and framework record creation.
+
+Use `index.blocked_paths` for softer read/list/search exclusions such as caches or sync noise:
+
+```toml
+[index]
+blocked_paths = [
+  ".obsidian/workspace*",
+  ".obsidian/cache*",
+  ".trash/**"
+]
+```
+
+`index.ignored_globs` remains supported for existing configs. Prefer `security.blocked_paths` for privacy boundaries because it also blocks writes.
+
+## 3. Enable OCR Tools
 
 OCR tools are disabled by default:
 
@@ -131,7 +159,7 @@ When enabled, three additional admin-scoped tools are advertised:
 
 OCR jobs currently expose provider-neutral job contracts. The server can queue and track OCR work, but the actual OCR provider/runtime integration is deployment-specific.
 
-## 3. Tool List and Scopes
+## 4. Tool List and Scopes
 
 Tool visibility is scope-filtered. If a tool is missing from `tools/list`, the token probably lacks the required scope or the tool's optional feature is disabled.
 
@@ -168,7 +196,7 @@ Tool visibility is scope-filtered. If a tool is missing from `tools/list`, the t
 | `ocr_status` | `admin` | Poll OCR job state. Requires `[ocr].enabled = true`. |
 | `ocr_renumber_notebook` | `admin` | Force notebook page renumbering. Requires `[ocr].enabled = true`. |
 
-## 4. Enable Logging and Auditing
+## 5. Enable Logging and Auditing
 
 ### Operational Logs
 

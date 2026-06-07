@@ -46,14 +46,16 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
 
   const reader = new VaultReader({
     vaultRoot: config.vaultPath,
-    ignoredGlobs: config.index.ignoredGlobs
+    ignoredGlobs: [...config.index.ignoredGlobs, ...config.index.blockedPaths],
+    blockedPaths: config.security.blockedPaths
   });
   const index = new VaultIndex({ reader, sqlitePath: config.index.sqlitePath });
   await index.rebuild();
   const readTools = createVaultReadTools(reader, index);
   const writer = new VaultWriter({
     vaultRoot: config.vaultPath,
-    cooldownSeconds: config.writes.cooldownSeconds
+    cooldownSeconds: config.writes.cooldownSeconds,
+    blockedPaths: config.security.blockedPaths
   });
   const writeAuditPath = path.join(config.statePath, "write-audit.sqlite");
   await rotateWriteAuditIfNeeded({

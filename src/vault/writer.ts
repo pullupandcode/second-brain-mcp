@@ -4,10 +4,12 @@ import path from "node:path";
 
 import { parseMarkdown, type FrontmatterValue } from "./markdown.js";
 import { normalizeVaultPath, resolveExistingVaultPath, resolveVaultPathForWrite } from "./path.js";
+import { pathMatchesAnyPattern } from "./policy.js";
 
 export type VaultWriteErrorCode =
   | "path_exists"
   | "path_missing"
+  | "path_blocked"
   | "path_quarantined"
   | "retryable_conflict"
   | "markers_missing";
@@ -29,6 +31,7 @@ export class VaultWriteError extends Error {
 export interface VaultWriterOptions {
   vaultRoot: string;
   cooldownSeconds: number;
+  blockedPaths?: string[];
   quarantinedPaths?: ReadonlySet<string>;
 }
 
@@ -41,12 +44,14 @@ export interface WriteResult {
 export class VaultWriter {
   private readonly vaultRoot: string;
   private readonly cooldownMs: number;
+  private readonly blockedPaths: string[];
   private readonly quarantinedPaths: ReadonlySet<string>;
   private readonly locks = new Map<string, Promise<void>>();
 
   constructor(options: VaultWriterOptions) {
     this.vaultRoot = path.resolve(options.vaultRoot);
     this.cooldownMs = options.cooldownSeconds * 1000;
+    this.blockedPaths = options.blockedPaths ?? [];
     this.quarantinedPaths = new Set(
       [...(options.quarantinedPaths ?? new Set<string>())].map(normalizeVaultPath)
     );
@@ -58,6 +63,7 @@ export class VaultWriter {
     frontmatter?: Record<string, FrontmatterValue>
   ): Promise<WriteResult> {
     return this.withPathLock(vaultPath, async (normalizedPath) => {
+      this.assertNotBlocked(normalizedPath);
       this.assertNotQuarantined(normalizedPath);
       const absolutePath = await resolveVaultPathForWrite(this.vaultRoot, normalizedPath);
       if (await exists(absolutePath)) {
@@ -120,6 +126,7 @@ export class VaultWriter {
     buildNextContent: (currentContent: string) => string
   ): Promise<WriteResult> {
     return this.withPathLock(vaultPath, async (normalizedPath) => {
+      this.assertNotBlocked(normalizedPath);
       this.assertNotQuarantined(normalizedPath);
       const absolutePath = await resolveExistingVaultPath(this.vaultRoot, normalizedPath);
       if (!(await exists(absolutePath))) {
@@ -160,6 +167,12 @@ export class VaultWriter {
   private assertNotQuarantined(normalizedPath: string): void {
     if (this.quarantinedPaths.has(normalizedPath)) {
       throw new VaultWriteError("path_quarantined", `Path is quarantined: ${normalizedPath}`);
+    }
+  }
+
+  private assertNotBlocked(normalizedPath: string): void {
+    if (pathMatchesAnyPattern(this.blockedPaths, normalizedPath)) {
+      throw new VaultWriteError("path_blocked", "Vault path is blocked");
     }
   }
 

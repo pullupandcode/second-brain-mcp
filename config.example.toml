@@ -38,6 +38,15 @@ ignored_globs = [
   "**/.DS_Store",
   "**/*.sync-conflict-*"
 ]
+# Human-readable alias for additional index/list/search exclusions.
+blocked_paths = []
+
+[security]
+# Hard denylist. Matching vault paths are unavailable to read, search, list, or write tools.
+blocked_paths = [
+  # "Private/**",
+  # "**/*.secret.md"
+]
 
 [writes]
 cooldown_seconds = 2
