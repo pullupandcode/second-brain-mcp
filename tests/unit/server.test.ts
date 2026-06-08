@@ -133,6 +133,7 @@ describe("createHttpServer", () => {
     ["vault:read", "read_note", "create_note"],
     ["vault:write", "create_note", "read_note"],
     ["vault:delete", "delete_note", "read_note"],
+    ["vault:delete:hard", "hard_delete_note", "read_note"],
     ["vault:capture", "inbox_capture", "read_note"],
     ["daily:append", "daily_note_append", "read_note"],
     ["admin", "framework_list", "read_note"]
@@ -384,7 +385,7 @@ describe("createHttpServer", () => {
       headers: {
         accept: "application/json, text/event-stream",
         authorization:
-          "Bearer scope=vault:read vault:write vault:delete vault:capture daily:append admin",
+          "Bearer scope=vault:read vault:write vault:delete vault:delete:hard vault:capture daily:append admin",
         "content-type": "application/json",
         "mcp-method": "tools/list"
       },
@@ -431,6 +432,7 @@ describe("createHttpServer", () => {
         properties: ["path", "marker_name", "content", "base_sha256"]
       },
       { name: "delete_note", required: ["path", "base_sha256"], properties: ["path", "base_sha256"] },
+      { name: "hard_delete_note", required: ["path", "base_sha256"], properties: ["path", "base_sha256"] },
       { name: "inbox_capture", required: ["content", "source_client"], properties: ["content", "source_client", "date", "source_id", "capture_type", "title", "strategy"] },
       { name: "capture_for_date", required: ["content", "source_client"], properties: ["content", "source_client", "date", "source_id", "capture_type", "title"] },
       { name: "daily_note_get", required: [], properties: ["date"] },
@@ -962,6 +964,7 @@ describe("createHttpServer", () => {
     ["vault:read", "read_note"],
     ["vault:write", "create_note"],
     ["vault:delete", "delete_note"],
+    ["vault:delete:hard", "hard_delete_note"],
     ["vault:capture", "inbox_capture"],
     ["daily:append", "daily_note_append"],
     ["admin", "framework_list"]

@@ -167,6 +167,46 @@ describe("VaultWriter", () => {
     expect(await readFile(join(vaultRoot, "Private", "Secret.md"), "utf8")).toBe("secret");
   });
 
+  test("hard deletes a note when base hash matches", async () => {
+    await writeFile(join(vaultRoot, "Notes", "Gone.md"), "Goodbye");
+    const base = await reader.readNote("Notes/Gone.md");
+
+    const result = await writer.hardDeleteNote("Notes/Gone.md", base.currentSha256);
+
+    expect(result).toEqual({
+      path: "Notes/Gone.md",
+      baseSha256: base.currentSha256,
+      resultSha256: base.currentSha256
+    });
+    await expect(readFile(join(vaultRoot, "Notes", "Gone.md"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT"
+    });
+  });
+
+  test("rejects hard deleting stale or blocked paths without removing the note", async () => {
+    await mkdir(join(vaultRoot, "Private"), { recursive: true });
+    await writeFile(join(vaultRoot, "Notes", "Keep.md"), "keep");
+    await writeFile(join(vaultRoot, "Private", "Secret.md"), "secret");
+    const blockedBase = await new VaultReader({
+      vaultRoot,
+      ignoredGlobs: [],
+      blockedPaths: []
+    }).readNote("Private/Secret.md");
+    const deleteWriter = new VaultWriter({
+      vaultRoot,
+      cooldownSeconds: 0,
+      blockedPaths: ["Private/**"]
+    });
+
+    await expect(deleteWriter.hardDeleteNote("Notes/Keep.md", "stale")).rejects.toMatchObject({
+      code: "retryable_conflict"
+    });
+    await expect(deleteWriter.hardDeleteNote("Private/Secret.md", blockedBase.currentSha256))
+      .rejects.toMatchObject({ code: "path_blocked" });
+    expect(await readFile(join(vaultRoot, "Notes", "Keep.md"), "utf8")).toBe("keep");
+    expect(await readFile(join(vaultRoot, "Private", "Secret.md"), "utf8")).toBe("secret");
+  });
+
   test("merges frontmatter while preserving the body", async () => {
     await writeFile(join(vaultRoot, "Notes", "New.md"), "---\ntags: [old]\n---\n# Body\n");
     const base = await reader.readNote("Notes/New.md");

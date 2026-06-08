@@ -16,7 +16,10 @@ describe("parseScopes", () => {
   });
 
   test("accepts delete scope claims", () => {
-    expect([...parseScopes("vault:delete")]).toEqual(["vault:delete"]);
+    expect([...parseScopes("vault:delete vault:delete:hard")]).toEqual([
+      "vault:delete",
+      "vault:delete:hard"
+    ]);
   });
 });
 
@@ -50,6 +53,14 @@ describe("tool registry", () => {
     expect(names).toContain("delete_note");
     expect(names).not.toContain("create_note");
     expect(names).not.toContain("hard_delete_note");
+  });
+
+  test("returns hard delete tools for vault hard delete scope", () => {
+    const names = listToolsForScopes(parseScopes("vault:delete:hard")).map((tool) => tool.name);
+
+    expect(names).toContain("hard_delete_note");
+    expect(names).not.toContain("delete_note");
+    expect(names).not.toContain("create_note");
   });
 
   test("hides OCR tools when OCR is disabled", () => {

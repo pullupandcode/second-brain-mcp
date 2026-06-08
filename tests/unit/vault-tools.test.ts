@@ -110,8 +110,10 @@ describe("createVaultWriteTools", () => {
       ignoredGlobs: []
     }).readNote("Inbox/Marked.md");
     await tools.delete_note("Inbox/Marked.md", markedAfterReplace.currentSha256);
+    await tools.hard_delete_note("Inbox/New.md", frontmatterUpdated.resultSha256);
 
     expect(audit.listRecentWrites().map((row) => row.operation)).toEqual([
+      "hard_delete_note",
       "delete_note",
       "replace_section_by_marker",
       "update_frontmatter",
@@ -119,6 +121,7 @@ describe("createVaultWriteTools", () => {
       "create_note"
     ]);
     expect(audit.listRecentWrites().map((row) => row.path)).toEqual([
+      "Inbox/New.md",
       "Inbox/Marked.md",
       "Inbox/Marked.md",
       "Inbox/New.md",

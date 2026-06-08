@@ -163,6 +163,13 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
             requireString(arguments_, "base_sha256")
           )
         ),
+      hard_delete_note: async (arguments_) =>
+        structuredResult(
+          await writeTools.hard_delete_note(
+            requireString(arguments_, "path"),
+            requireString(arguments_, "base_sha256")
+          )
+        ),
       update_frontmatter: async (arguments_) =>
         structuredResult(
           await writeTools.update_frontmatter(

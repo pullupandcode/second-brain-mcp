@@ -24,6 +24,7 @@ export type WriteAuditOperation =
   | "create_note"
   | "replace_note"
   | "delete_note"
+  | "hard_delete_note"
   | "update_frontmatter"
   | "replace_section_by_marker";
 
@@ -224,6 +225,7 @@ export class VaultWriteAuditStore {
             'create_note',
             'replace_note',
             'delete_note',
+            'hard_delete_note',
             'update_frontmatter',
             'replace_section_by_marker'
           )
@@ -259,6 +261,7 @@ export class VaultWriteAuditStore {
             'create_note',
             'replace_note',
             'delete_note',
+            'hard_delete_note',
             'update_frontmatter',
             'replace_section_by_marker'
           )

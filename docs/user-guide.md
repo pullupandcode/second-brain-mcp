@@ -181,6 +181,7 @@ Tool visibility is scope-filtered. If a tool is missing from `tools/list`, the t
 | `replace_section_by_marker` | `vault:write` | Replace an MCP-owned marker section. |
 | `create_record` | `vault:write` | Create a type-driven framework record. |
 | `delete_note` | `vault:delete` | Move a note into the configured MCP trash path. |
+| `hard_delete_note` | `vault:delete:hard` | Remove a note from disk with optimistic concurrency. |
 | `inbox_capture` | `vault:capture` | Create or update inbox capture content. |
 | `capture_for_date` | `vault:capture` | Create a capture record for a date. |
 | `daily_note_append` | `daily:append` | Append inside a writable daily note marker. |
@@ -247,6 +248,8 @@ trash_path = ".trash/mcp"
 ```
 
 Keep the trash path in `index.ignored_globs` or `index.blocked_paths` if you do not want deleted notes to appear in search or folder listings.
+
+The `hard_delete_note` tool requires `vault:delete:hard` and also requires `base_sha256`. It removes the note from disk, so grant this scope separately from `vault:delete`.
 
 ### Write Audit
 

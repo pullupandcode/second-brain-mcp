@@ -12,6 +12,7 @@ const BASE_TOOLS = [
   tool("create_note", "vault:write", "Create a note and fail if the path exists."),
   tool("replace_note", "vault:write", "Replace a full note body with optimistic concurrency."),
   tool("delete_note", "vault:delete", "Move a note into the configured MCP trash path."),
+  tool("hard_delete_note", "vault:delete:hard", "Remove a note from disk with optimistic concurrency."),
   tool("list_folder", "vault:read", "List notes under a vault path."),
   tool("search", "vault:read", "Search indexed notes."),
   tool("get_backlinks", "vault:read", "List notes linking to a path."),

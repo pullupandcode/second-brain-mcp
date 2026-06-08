@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { parseMarkdown, type FrontmatterValue } from "./markdown.js";
@@ -156,6 +156,35 @@ export class VaultWriter {
       return {
         path: normalizedPath,
         deletedPath,
+        baseSha256,
+        resultSha256: currentSha256
+      };
+    });
+  }
+
+  async hardDeleteNote(vaultPath: string, baseSha256: string): Promise<WriteResult> {
+    return this.withPathLock(vaultPath, async (normalizedPath) => {
+      this.assertNotBlocked(normalizedPath);
+      this.assertNotQuarantined(normalizedPath);
+      const absolutePath = await resolveExistingVaultPath(this.vaultRoot, normalizedPath);
+      if (!(await exists(absolutePath))) {
+        throw new VaultWriteError("path_missing", `Path does not exist: ${normalizedPath}`);
+      }
+
+      await this.assertCooldownElapsed(absolutePath);
+      const currentContent = await readFile(absolutePath, "utf8");
+      const currentSha256 = sha256(currentContent);
+      if (currentSha256 !== baseSha256) {
+        throw new VaultWriteError(
+          "retryable_conflict",
+          `Stale base_sha256 for path: ${normalizedPath}`,
+          currentSha256
+        );
+      }
+
+      await unlink(absolutePath);
+      return {
+        path: normalizedPath,
         baseSha256,
         resultSha256: currentSha256
       };
