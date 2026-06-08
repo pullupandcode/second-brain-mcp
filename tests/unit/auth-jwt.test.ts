@@ -130,6 +130,7 @@ function config(): ServerConfig {
     },
     index: { sqlitePath: ":memory:", watcherPolling: false, ignoredGlobs: [], blockedPaths: [] },
     security: { blockedPaths: [] },
+    deletes: { trashPath: ".trash/mcp" },
     writes: { cooldownSeconds: 0 },
     audit: { retentionMaxRows: 0 },
     framework: { schemaPath: "_meta/framework.yaml" },

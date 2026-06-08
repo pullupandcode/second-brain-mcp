@@ -3,7 +3,12 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { parseMarkdown, type FrontmatterValue } from "./markdown.js";
-import { normalizeVaultPath, resolveExistingVaultPath, resolveVaultPathForWrite } from "./path.js";
+import {
+  normalizeVaultPath,
+  resolveExistingVaultPath,
+  resolveVaultPath,
+  resolveVaultPathForWrite
+} from "./path.js";
 import { pathMatchesAnyPattern } from "./policy.js";
 
 export type VaultWriteErrorCode =
@@ -33,10 +38,12 @@ export interface VaultWriterOptions {
   cooldownSeconds: number;
   blockedPaths?: string[];
   quarantinedPaths?: ReadonlySet<string>;
+  trashPath?: string;
 }
 
 export interface WriteResult {
   path: string;
+  deletedPath?: string;
   baseSha256?: string;
   resultSha256: string;
 }
@@ -46,6 +53,7 @@ export class VaultWriter {
   private readonly cooldownMs: number;
   private readonly blockedPaths: string[];
   private readonly quarantinedPaths: ReadonlySet<string>;
+  private readonly trashPath: string;
   private readonly locks = new Map<string, Promise<void>>();
 
   constructor(options: VaultWriterOptions) {
@@ -55,6 +63,7 @@ export class VaultWriter {
     this.quarantinedPaths = new Set(
       [...(options.quarantinedPaths ?? new Set<string>())].map(normalizeVaultPath)
     );
+    this.trashPath = normalizeVaultPath(options.trashPath ?? ".trash/mcp");
   }
 
   async createNote(
@@ -120,6 +129,39 @@ export class VaultWriter {
     });
   }
 
+  async deleteNote(vaultPath: string, baseSha256: string): Promise<WriteResult> {
+    return this.withPathLock(vaultPath, async (normalizedPath) => {
+      this.assertNotBlocked(normalizedPath);
+      this.assertNotQuarantined(normalizedPath);
+      const absolutePath = await resolveExistingVaultPath(this.vaultRoot, normalizedPath);
+      if (!(await exists(absolutePath))) {
+        throw new VaultWriteError("path_missing", `Path does not exist: ${normalizedPath}`);
+      }
+
+      await this.assertCooldownElapsed(absolutePath);
+      const currentContent = await readFile(absolutePath, "utf8");
+      const currentSha256 = sha256(currentContent);
+      if (currentSha256 !== baseSha256) {
+        throw new VaultWriteError(
+          "retryable_conflict",
+          `Stale base_sha256 for path: ${normalizedPath}`,
+          currentSha256
+        );
+      }
+
+      const deletedPath = await this.nextTrashPath(normalizedPath);
+      const deletedAbsolutePath = await resolveVaultPathForWrite(this.vaultRoot, deletedPath);
+      await mkdir(path.dirname(deletedAbsolutePath), { recursive: true });
+      await rename(absolutePath, deletedAbsolutePath);
+      return {
+        path: normalizedPath,
+        deletedPath,
+        baseSha256,
+        resultSha256: currentSha256
+      };
+    });
+  }
+
   private async updateExisting(
     vaultPath: string,
     baseSha256: string,
@@ -174,6 +216,19 @@ export class VaultWriter {
     if (pathMatchesAnyPattern(this.blockedPaths, normalizedPath)) {
       throw new VaultWriteError("path_blocked", "Vault path is blocked");
     }
+  }
+
+  private async nextTrashPath(normalizedPath: string): Promise<string> {
+    const initialPath = normalizeVaultPath(path.posix.join(this.trashPath, normalizedPath));
+    if (!(await exists(resolveVaultPath(this.vaultRoot, initialPath)))) {
+      return initialPath;
+    }
+
+    const parsed = path.posix.parse(normalizedPath);
+    const directory = parsed.dir === "" ? "" : `${parsed.dir}/`;
+    return normalizeVaultPath(
+      path.posix.join(this.trashPath, `${directory}${parsed.name}.${randomUUID()}${parsed.ext}`)
+    );
   }
 
   private async withPathLock<T>(

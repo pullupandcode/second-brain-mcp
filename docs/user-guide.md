@@ -180,6 +180,7 @@ Tool visibility is scope-filtered. If a tool is missing from `tools/list`, the t
 | `update_frontmatter` | `vault:write` | Merge frontmatter keys. |
 | `replace_section_by_marker` | `vault:write` | Replace an MCP-owned marker section. |
 | `create_record` | `vault:write` | Create a type-driven framework record. |
+| `delete_note` | `vault:delete` | Move a note into the configured MCP trash path. |
 | `inbox_capture` | `vault:capture` | Create or update inbox capture content. |
 | `capture_for_date` | `vault:capture` | Create a capture record for a date. |
 | `daily_note_append` | `daily:append` | Append inside a writable daily note marker. |
@@ -235,6 +236,17 @@ log_args = true
 ```
 
 Raw tool arguments can contain private vault text, note paths, capture content, and frontmatter.
+
+### Soft Delete
+
+The `delete_note` tool requires `vault:delete` and `base_sha256`. It moves the note into a vault-relative trash folder instead of removing it from disk:
+
+```toml
+[deletes]
+trash_path = ".trash/mcp"
+```
+
+Keep the trash path in `index.ignored_globs` or `index.blocked_paths` if you do not want deleted notes to appear in search or folder listings.
 
 ### Write Audit
 

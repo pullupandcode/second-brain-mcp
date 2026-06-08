@@ -98,6 +98,9 @@ function testConfig(vaultPath: string, statePath: string): ServerConfig {
     security: {
       blockedPaths: []
     },
+    deletes: {
+      trashPath: ".trash/mcp"
+    },
     writes: {
       cooldownSeconds: 0
     },

@@ -35,6 +35,9 @@ const config: ServerConfig = {
   security: {
     blockedPaths: []
   },
+  deletes: {
+    trashPath: ".trash/mcp"
+  },
   writes: {
     cooldownSeconds: 2
   },
@@ -129,6 +132,7 @@ describe("createHttpServer", () => {
   test.each([
     ["vault:read", "read_note", "create_note"],
     ["vault:write", "create_note", "read_note"],
+    ["vault:delete", "delete_note", "read_note"],
     ["vault:capture", "inbox_capture", "read_note"],
     ["daily:append", "daily_note_append", "read_note"],
     ["admin", "framework_list", "read_note"]
@@ -379,7 +383,8 @@ describe("createHttpServer", () => {
       method: "POST",
       headers: {
         accept: "application/json, text/event-stream",
-        authorization: "Bearer scope=vault:read vault:write vault:capture daily:append admin",
+        authorization:
+          "Bearer scope=vault:read vault:write vault:delete vault:capture daily:append admin",
         "content-type": "application/json",
         "mcp-method": "tools/list"
       },
@@ -425,6 +430,7 @@ describe("createHttpServer", () => {
         required: ["path", "marker_name", "content", "base_sha256"],
         properties: ["path", "marker_name", "content", "base_sha256"]
       },
+      { name: "delete_note", required: ["path", "base_sha256"], properties: ["path", "base_sha256"] },
       { name: "inbox_capture", required: ["content", "source_client"], properties: ["content", "source_client", "date", "source_id", "capture_type", "title", "strategy"] },
       { name: "capture_for_date", required: ["content", "source_client"], properties: ["content", "source_client", "date", "source_id", "capture_type", "title"] },
       { name: "daily_note_get", required: [], properties: ["date"] },
@@ -955,6 +961,7 @@ describe("createHttpServer", () => {
   test.each([
     ["vault:read", "read_note"],
     ["vault:write", "create_note"],
+    ["vault:delete", "delete_note"],
     ["vault:capture", "inbox_capture"],
     ["daily:append", "daily_note_append"],
     ["admin", "framework_list"]
@@ -1286,15 +1293,47 @@ log_args = false
           }
         })
       });
+      const replaceBody = (await replaceResponse.json()) as {
+        result: { structuredContent: { resultSha256: string } };
+      };
 
       expect(replaceResponse.status).toBe(200);
       expect(await readFile(join(vaultPath, "Inbox", "Written.md"), "utf8")).toBe(
         "Replaced from runtime"
       );
 
+      const deleteResponse = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer scope=vault:delete",
+          "content-type": "application/json",
+          "mcp-method": "tools/call",
+          "mcp-name": "delete_note"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "delete",
+          method: "tools/call",
+          params: {
+            name: "delete_note",
+            arguments: {
+              path: "Inbox/Written.md",
+              base_sha256: replaceBody.result.structuredContent.resultSha256
+            }
+          }
+        })
+      });
+
+      expect(deleteResponse.status).toBe(200);
+      expect(await readFile(join(vaultPath, ".trash", "mcp", "Inbox", "Written.md"), "utf8")).toBe(
+        "Replaced from runtime"
+      );
+
       const audit = new VaultWriteAuditStore({ sqlitePath: auditPath });
       try {
         expect(audit.listRecentWrites().map((row) => row.operation)).toEqual([
+          "delete_note",
           "replace_note",
           "create_note"
         ]);

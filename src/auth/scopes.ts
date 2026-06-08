@@ -1,6 +1,7 @@
 export const KNOWN_SCOPES = [
   "vault:read",
   "vault:write",
+  "vault:delete",
   "vault:capture",
   "daily:append",
   "admin"

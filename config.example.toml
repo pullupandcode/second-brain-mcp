@@ -48,6 +48,10 @@ blocked_paths = [
   # "**/*.secret.md"
 ]
 
+[deletes]
+# Soft deletes move notes here instead of removing them from disk.
+trash_path = ".trash/mcp"
+
 [writes]
 cooldown_seconds = 2
 

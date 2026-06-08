@@ -33,6 +33,9 @@ export interface ServerConfig {
   security: {
     blockedPaths: string[];
   };
+  deletes: {
+    trashPath: string;
+  };
   writes: {
     cooldownSeconds: number;
   };
@@ -76,6 +79,9 @@ interface RawConfig {
   };
   security?: {
     blocked_paths?: unknown;
+  };
+  deletes?: {
+    trash_path?: unknown;
   };
   writes?: {
     cooldown_seconds?: unknown;
@@ -163,6 +169,7 @@ export function parseConfig(source: string): ServerConfig {
       blockedPaths: readOptionalVaultPatternArray(index.blocked_paths, "index.blocked_paths")
     },
     security: readSecurityConfig(raw.security),
+    deletes: readDeleteConfig(raw.deletes),
     writes: {
       cooldownSeconds: requireInteger(writes.cooldown_seconds, "writes.cooldown_seconds")
     },
@@ -187,6 +194,19 @@ function readSecurityConfig(value: RawConfig["security"]): ServerConfig["securit
   const security = requireObject(value, "security");
   return {
     blockedPaths: readOptionalVaultPatternArray(security.blocked_paths, "security.blocked_paths")
+  };
+}
+
+function readDeleteConfig(value: RawConfig["deletes"]): ServerConfig["deletes"] {
+  if (value === undefined) {
+    return { trashPath: ".trash/mcp" };
+  }
+  const deletes = requireObject(value, "deletes");
+  return {
+    trashPath:
+      deletes.trash_path === undefined
+        ? ".trash/mcp"
+        : normalizeVaultPath(requireString(deletes.trash_path, "deletes.trash_path"))
   };
 }
 

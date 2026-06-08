@@ -23,6 +23,7 @@ const { DatabaseSync } = require("node:sqlite") as {
 export type WriteAuditOperation =
   | "create_note"
   | "replace_note"
+  | "delete_note"
   | "update_frontmatter"
   | "replace_section_by_marker";
 
@@ -222,6 +223,7 @@ export class VaultWriteAuditStore {
           operation IN (
             'create_note',
             'replace_note',
+            'delete_note',
             'update_frontmatter',
             'replace_section_by_marker'
           )
@@ -256,6 +258,7 @@ export class VaultWriteAuditStore {
           operation IN (
             'create_note',
             'replace_note',
+            'delete_note',
             'update_frontmatter',
             'replace_section_by_marker'
           )

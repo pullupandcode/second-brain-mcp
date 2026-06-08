@@ -314,6 +314,12 @@ function namedInputSchemaForTool(name: string): JsonObjectSchema | undefined {
       frontmatter: objectProperty("Optional replacement frontmatter fields.")
     });
   }
+  if (name === "delete_note") {
+    return objectInputSchema(["path", "base_sha256"], {
+      path: stringProperty("Vault-relative markdown path."),
+      base_sha256: stringProperty("Current note SHA-256 for optimistic concurrency.")
+    });
+  }
   if (name === "list_folder") {
     return objectInputSchema(["path"], {
       path: stringProperty("Vault-relative folder path. Use an empty string for the vault root."),

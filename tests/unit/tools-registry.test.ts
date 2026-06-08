@@ -14,6 +14,10 @@ describe("parseScopes", () => {
   test("accepts array scope claims", () => {
     expect([...parseScopes(["vault:write", "admin"])]).toEqual(["vault:write", "admin"]);
   });
+
+  test("accepts delete scope claims", () => {
+    expect([...parseScopes("vault:delete")]).toEqual(["vault:delete"]);
+  });
 });
 
 describe("tool registry", () => {
@@ -38,6 +42,14 @@ describe("tool registry", () => {
     expect(names).toContain("create_record");
     expect(names).not.toContain("create_lyt_record");
     expect(names).not.toContain("daily_note_append");
+  });
+
+  test("returns soft delete tools for vault delete scope", () => {
+    const names = listToolsForScopes(parseScopes("vault:delete")).map((tool) => tool.name);
+
+    expect(names).toContain("delete_note");
+    expect(names).not.toContain("create_note");
+    expect(names).not.toContain("hard_delete_note");
   });
 
   test("hides OCR tools when OCR is disabled", () => {

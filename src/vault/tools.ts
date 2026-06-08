@@ -26,6 +26,7 @@ export interface VaultWriteTools {
     baseSha256: string,
     frontmatter?: Record<string, FrontmatterValue>
   ): Promise<WriteResult>;
+  delete_note(path: string, baseSha256: string): Promise<WriteResult>;
   update_frontmatter(
     path: string,
     patch: Record<string, FrontmatterValue>,
@@ -63,6 +64,10 @@ export function createVaultWriteTools(
     replace_note: (path, content, baseSha256, frontmatter) =>
       auditedWrite(auditStore, "replace_note", { path, baseSha256 }, () =>
         writer.replaceNote(path, content, baseSha256, frontmatter)
+      ),
+    delete_note: (path, baseSha256) =>
+      auditedWrite(auditStore, "delete_note", { path, baseSha256 }, () =>
+        writer.deleteNote(path, baseSha256)
       ),
     update_frontmatter: (path, patch, baseSha256) =>
       auditedWrite(auditStore, "update_frontmatter", { path, baseSha256 }, () =>

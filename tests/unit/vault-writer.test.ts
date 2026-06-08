@@ -117,6 +117,56 @@ describe("VaultWriter", () => {
       .toMatchObject({ code: "retryable_conflict" });
   });
 
+  test("soft deletes a note into the configured trash path when base hash matches", async () => {
+    await writeFile(join(vaultRoot, "Notes", "New.md"), "Hello");
+    const base = await reader.readNote("Notes/New.md");
+    const deleteWriter = new VaultWriter({
+      vaultRoot,
+      cooldownSeconds: 0,
+      trashPath: ".trash/mcp"
+    });
+
+    const result = await deleteWriter.deleteNote("Notes/New.md", base.currentSha256);
+
+    expect(result).toEqual({
+      path: "Notes/New.md",
+      deletedPath: ".trash/mcp/Notes/New.md",
+      baseSha256: base.currentSha256,
+      resultSha256: base.currentSha256
+    });
+    await expect(readFile(join(vaultRoot, "Notes", "New.md"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT"
+    });
+    expect(await readFile(join(vaultRoot, ".trash", "mcp", "Notes", "New.md"), "utf8")).toBe(
+      "Hello"
+    );
+  });
+
+  test("rejects soft deleting stale or blocked paths without moving the note", async () => {
+    await mkdir(join(vaultRoot, "Private"), { recursive: true });
+    await writeFile(join(vaultRoot, "Notes", "New.md"), "Hello");
+    await writeFile(join(vaultRoot, "Private", "Secret.md"), "secret");
+    const blockedBase = await new VaultReader({
+      vaultRoot,
+      ignoredGlobs: [],
+      blockedPaths: []
+    }).readNote("Private/Secret.md");
+    const deleteWriter = new VaultWriter({
+      vaultRoot,
+      cooldownSeconds: 0,
+      blockedPaths: ["Private/**"],
+      trashPath: ".trash/mcp"
+    });
+
+    await expect(deleteWriter.deleteNote("Notes/New.md", "stale")).rejects.toMatchObject({
+      code: "retryable_conflict"
+    });
+    await expect(deleteWriter.deleteNote("Private/Secret.md", blockedBase.currentSha256)).rejects
+      .toMatchObject({ code: "path_blocked" });
+    expect(await readFile(join(vaultRoot, "Notes", "New.md"), "utf8")).toBe("Hello");
+    expect(await readFile(join(vaultRoot, "Private", "Secret.md"), "utf8")).toBe("secret");
+  });
+
   test("merges frontmatter while preserving the body", async () => {
     await writeFile(join(vaultRoot, "Notes", "New.md"), "---\ntags: [old]\n---\n# Body\n");
     const base = await reader.readNote("Notes/New.md");

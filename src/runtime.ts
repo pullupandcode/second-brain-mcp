@@ -55,7 +55,8 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
   const writer = new VaultWriter({
     vaultRoot: config.vaultPath,
     cooldownSeconds: config.writes.cooldownSeconds,
-    blockedPaths: config.security.blockedPaths
+    blockedPaths: config.security.blockedPaths,
+    trashPath: config.deletes.trashPath
   });
   const writeAuditPath = path.join(config.statePath, "write-audit.sqlite");
   await rotateWriteAuditIfNeeded({
@@ -153,6 +154,13 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
             requireString(arguments_, "content"),
             requireString(arguments_, "base_sha256"),
             optionalFrontmatter(arguments_, "frontmatter")
+          )
+        ),
+      delete_note: async (arguments_) =>
+        structuredResult(
+          await writeTools.delete_note(
+            requireString(arguments_, "path"),
+            requireString(arguments_, "base_sha256")
           )
         ),
       update_frontmatter: async (arguments_) =>

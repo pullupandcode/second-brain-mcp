@@ -56,6 +56,7 @@ describe("parseConfig", () => {
     expect(config.index.ignoredGlobs).toEqual([".second-brain/workspace*", ".trash/**"]);
     expect(config.index.blockedPaths).toEqual([]);
     expect(config.security.blockedPaths).toEqual([]);
+    expect(config.deletes.trashPath).toBe(".trash/mcp");
     expect(config.writes.cooldownSeconds).toBe(2);
     expect(config.audit.retentionMaxRows).toBe(0);
     expect(config.audit.archivePath).toBeUndefined();
@@ -100,6 +101,22 @@ blocked_paths = ["Private/**", "**/*.secret.md"]`
     expect(config.index.ignoredGlobs).toEqual([".second-brain/workspace*", ".trash/**"]);
     expect(config.index.blockedPaths).toEqual(["Cache/**"]);
     expect(config.security.blockedPaths).toEqual(["Private/**", "**/*.secret.md"]);
+  });
+
+  test("allows the soft delete trash path to be configured", () => {
+    const config = parseConfig(
+      validConfig.replace(
+        `[writes]
+cooldown_seconds = 2`,
+        `[deletes]
+trash_path = "Deleted/MCP"
+
+[writes]
+cooldown_seconds = 2`
+      )
+    );
+
+    expect(config.deletes.trashPath).toBe("Deleted/MCP");
   });
 
   test("enables optional OCR tools from config", () => {

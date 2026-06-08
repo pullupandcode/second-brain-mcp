@@ -105,14 +105,21 @@ describe("createVaultWriteTools", () => {
       "new",
       markerBase.currentSha256
     );
+    const markedAfterReplace = await new VaultReader({
+      vaultRoot,
+      ignoredGlobs: []
+    }).readNote("Inbox/Marked.md");
+    await tools.delete_note("Inbox/Marked.md", markedAfterReplace.currentSha256);
 
     expect(audit.listRecentWrites().map((row) => row.operation)).toEqual([
+      "delete_note",
       "replace_section_by_marker",
       "update_frontmatter",
       "replace_note",
       "create_note"
     ]);
     expect(audit.listRecentWrites().map((row) => row.path)).toEqual([
+      "Inbox/Marked.md",
       "Inbox/Marked.md",
       "Inbox/New.md",
       "Inbox/New.md",

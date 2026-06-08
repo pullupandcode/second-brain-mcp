@@ -27,6 +27,9 @@ const config: ServerConfig = {
   security: {
     blockedPaths: []
   },
+  deletes: {
+    trashPath: ".trash/mcp"
+  },
   writes: {
     cooldownSeconds: 2
   },
@@ -52,7 +55,14 @@ describe("buildProtectedResourceMetadata", () => {
     expect(buildProtectedResourceMetadata(config)).toEqual({
       resource: "https://second-brain-mcp.example.com",
       authorization_servers: ["https://idp.example.com/application/o/second-brain-mcp-human/"],
-      scopes_supported: ["vault:read", "vault:write", "vault:capture", "daily:append", "admin"],
+      scopes_supported: [
+        "vault:read",
+        "vault:write",
+        "vault:delete",
+        "vault:capture",
+        "daily:append",
+        "admin"
+      ],
       bearer_methods_supported: ["header"],
       resource_documentation: "https://second-brain-mcp.example.com/docs"
     });
