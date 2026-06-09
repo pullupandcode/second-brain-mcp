@@ -149,6 +149,8 @@ Start from [config.example.toml](config.example.toml). The most important produc
 - `index.blocked_paths` or `index.ignored_globs` for softer index/list/search exclusions
 - `[logging].log_args = false` unless debugging locally
 
+For a copyable Linking Your Thinking vault schema, see [examples/vault/_meta/framework.lyt.yaml](examples/vault/_meta/framework.lyt.yaml). Copy it into your vault as `_meta/framework.yaml`, or set `[framework].schema_path` to its vault-relative path.
+
 ## Development
 
 ```bash

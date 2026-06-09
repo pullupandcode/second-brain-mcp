@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { readFile } from "node:fs/promises";
 
 import { composeFrameworkSchemas, parseFrameworkSchema } from "../../src/framework/schema.js";
 
@@ -71,6 +72,20 @@ framework: unknown
 types: {}
 `)
     ).toThrow(/framework must be one of/);
+  });
+
+  test("parses the example LYT vault schema", async () => {
+    const source = await readFile("examples/vault/_meta/framework.lyt.yaml", "utf8");
+    const schema = parseFrameworkSchema(source);
+    const effective = composeFrameworkSchemas(schema);
+
+    expect(effective.framework).toBe("lyt");
+    expect(effective.name).toBe("lyt-starter");
+    expect(effective.inbox?.folder).toBe("+");
+    expect(effective.types.capture?.folder).toBe("Calendar/Records/Captures");
+    expect(effective.types.meeting?.frontmatter?.collection).toEqual({
+      defaultValue: ["[[Meetings]]"]
+    });
   });
 });
 

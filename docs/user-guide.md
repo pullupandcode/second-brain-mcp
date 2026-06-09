@@ -137,7 +137,32 @@ blocked_paths = [
 
 `index.ignored_globs` remains supported for existing configs. Prefer `security.blocked_paths` for privacy boundaries because it also blocks writes.
 
-## 3. Enable OCR Tools
+## 3. Configure a Framework Schema
+
+The server reads the active vault framework schema from:
+
+```toml
+[framework]
+schema_path = "_meta/framework.yaml"
+```
+
+For a Linking Your Thinking starter schema, copy [../examples/vault/_meta/framework.lyt.yaml](../examples/vault/_meta/framework.lyt.yaml) into your vault as:
+
+```text
+_meta/framework.yaml
+```
+
+You can also initialize a starter schema through the admin-scoped MCP tool:
+
+```text
+framework_init
+```
+
+with `framework` set to `lyt`, `para`, or `zettel`.
+
+The generated or copied schema is just a vault file. Edit folders, filenames, templates, frontmatter defaults, and record types to match your system, then run `framework_reload` or restart the server.
+
+## 4. Enable OCR Tools
 
 OCR tools are disabled by default:
 
@@ -161,7 +186,7 @@ When enabled, three additional admin-scoped tools are advertised:
 
 OCR jobs currently expose provider-neutral job contracts. The server can queue and track OCR work, but the actual OCR provider/runtime integration is deployment-specific.
 
-## 4. Tool List and Scopes
+## 5. Tool List and Scopes
 
 Tool visibility is scope-filtered. If a tool is missing from `tools/list`, the token probably lacks the required scope or the tool's optional feature is disabled.
 
@@ -200,7 +225,7 @@ Tool visibility is scope-filtered. If a tool is missing from `tools/list`, the t
 | `ocr_status` | `admin` | Poll OCR job state. Requires `[ocr].enabled = true`. |
 | `ocr_renumber_notebook` | `admin` | Force notebook page renumbering. Requires `[ocr].enabled = true`. |
 
-## 5. Enable Logging and Auditing
+## 6. Enable Logging and Auditing
 
 ### Operational Logs
 
@@ -283,7 +308,7 @@ When `retention_max_rows` is greater than `0`, startup checks `write_audit.sqlit
 
 Then it starts a fresh audit database.
 
-## 6. Audit Good and Bad Events
+## 7. Audit Good and Bad Events
 
 You can audit through MCP tools, stdout logs, or direct SQLite inspection.
 
@@ -401,7 +426,7 @@ ORDER BY id ASC;
 
 If an attempt has `started` followed by `failed`, the server observed and recorded the failure. If it has only `started`, use `list_write_recovery_diagnostics` and inspect the target note before retrying.
 
-## 7. Recovery Workflow
+## 8. Recovery Workflow
 
 When `list_write_recovery_diagnostics` returns rows:
 

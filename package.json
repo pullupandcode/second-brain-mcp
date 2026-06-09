@@ -1,6 +1,6 @@
 {
   "name": "second-brain-mcp",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Production-ready MCP server for scoped, auditable access to a markdown Second Brain vault.",
   "private": true,
   "license": "Apache-2.0",
