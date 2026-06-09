@@ -17,6 +17,8 @@ Production deployments should put the Node process behind HTTPS and configure:
 - `auth.discovery_authorization_server` to the human-facing OAuth authorization server
 - `auth.jwt_algorithms` to the accepted signing algorithms, usually `["RS256"]`
 
+The server validates bearer-token issuer, audience, expiration, allowed algorithms, and scope claims. It does not issue tokens or manage signing keys; configure those in your identity provider or service-token issuer.
+
 Local-only testing can use `auth.mode = "development"` with:
 
 ```http
@@ -55,6 +57,8 @@ Clients should call `initialize`, then `tools/list`, then `tools/call`. Tool lis
 |---|---|
 | `vault:read` | Read notes, list folders, search, backlinks, outgoing links, structure discovery |
 | `vault:write` | Create and replace notes, update frontmatter, create framework records |
+| `vault:delete` | Move notes into the configured MCP trash path |
+| `vault:delete:hard` | Permanently remove notes from disk with optimistic concurrency |
 | `vault:capture` | Inbox and date-based capture flows |
 | `daily:append` | Append to writable daily-note marker sections |
 | `admin` | Framework management, conflict diagnostics, OCR admin tools, write recovery diagnostics |

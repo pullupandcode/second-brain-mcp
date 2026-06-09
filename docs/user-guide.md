@@ -1,6 +1,8 @@
-# End-User Guide
+# User Guide
 
-This guide explains how to enable `second-brain-mcp`, grant client access, enable optional OCR tools, and inspect logging and audit evidence.
+This guide explains how to run `second-brain-mcp`, grant client access, set vault boundaries, enable optional OCR tools, and inspect logging and audit evidence.
+
+For production deployment and client integration notes, see [deployment.md](deployment.md).
 
 ## 1. Enable the Server
 
@@ -281,7 +283,7 @@ When `retention_max_rows` is greater than `0`, startup checks `write_audit.sqlit
 
 Then it starts a fresh audit database.
 
-## 5. Audit Good and Bad Events
+## 6. Audit Good and Bad Events
 
 You can audit through MCP tools, stdout logs, or direct SQLite inspection.
 
@@ -399,7 +401,7 @@ ORDER BY id ASC;
 
 If an attempt has `started` followed by `failed`, the server observed and recorded the failure. If it has only `started`, use `list_write_recovery_diagnostics` and inspect the target note before retrying.
 
-## 6. Recovery Workflow
+## 7. Recovery Workflow
 
 When `list_write_recovery_diagnostics` returns rows:
 

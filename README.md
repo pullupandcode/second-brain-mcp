@@ -1,76 +1,176 @@
 # second-brain-mcp
 
-Typed MCP core for a Second Brain markdown vault.
+`second-brain-mcp` is a production-ready Model Context Protocol server for a markdown Second Brain vault. It gives AI clients scoped, auditable tools for reading, searching, capturing, organizing, and carefully writing notes while keeping the vault as plain files that remain owned by the user.
 
-## Current Slice
+The server is designed for Obsidian-style markdown vaults, but the core filesystem, frontmatter, wikilink, and schema behavior is framework-neutral. It includes presets for LYT, PARA, and Zettelkasten, plus custom schemas for teams or individuals with their own knowledge system.
 
-This implementation currently includes:
+## What It Provides
 
-- Strict TypeScript project scaffold
-- TOML runtime config parsing and validation
-- OAuth protected-resource discovery metadata builder
-- Bearer JWT validation against trusted issuer JWKS in production mode
-- Scope parsing for `vault:read`, `vault:write`, `vault:capture`, `daily:append`, and `admin`
-- Typed tool registry with scope-filtered listing
-- Framework-neutral record tool names and built-in presets for LYT, PARA, and Zettel
-- Framework schema parsing/composition, including `framework: custom` for non-preset systems
-- Framework overlay registration state in `_meta/schemas.json`
-- Framework management tools for init, register, unregister, list, reload, and compose
-- Framework-aware record creation with schema-driven paths, templates, and frontmatter
-- Provider-neutral OCR job queue contracts for notebook OCR, status polling, and renumber jobs
-- Inbox capture replacement by stable `source_id` with optimistic hash checks
-- Dated capture records as files through `capture_for_date`, avoiding direct daily-note edits
-- Daily note get, marker append, and marker repair helpers for MCP-owned sections
-- Safe vault path normalization and traversal protection
-- Markdown/frontmatter parsing with tags, aliases, source IDs, and wikilink extraction
-- Local vault reader for note reads, SHA-256 hashes, and folder listing
-- Vault writer foundation for atomic creates/replaces, `base_sha256` checks, cooldown conflicts, frontmatter patching, and marker-scoped replacement
-- Primitive write tool adapter with append-only SQLite write audit rows for successful writes
-- Optional write-audit rotation on startup when configured row retention is exceeded
-- Admin write recovery diagnostics for attempts that started without terminal audit events
-- Rebuildable SQLite FTS index for search, backlinks, outgoing links, source ID lookup, and conflict listing
-- Config-file based HTTP server startup
-- Config-backed read tool runtime wiring for `tools/call`
-- Config-backed write runtime wiring for `create_note`, `replace_note`, `update_frontmatter`, and `replace_section_by_marker` with audit
-- Config-backed framework record runtime wiring for `create_record`, `inbox_capture`, `capture_for_date`, and `list_record_types`
-- MCP Streamable HTTP standard header consistency checks for `Mcp-Method` and `Mcp-Name`
+- Streamable HTTP MCP endpoint at `POST /mcp`
+- OAuth protected-resource metadata at `/.well-known/oauth-protected-resource`
+- Production JWT bearer-token validation against trusted issuer JWKS
+- Scope-filtered tool discovery and tool-call authorization
+- Safe vault path normalization with traversal protection
+- Hard denylist support for private vault paths
+- Markdown/frontmatter parsing with tags, aliases, source IDs, and wikilinks
+- SQLite-backed search, backlinks, outgoing links, source ID lookup, and conflict listing
+- Atomic note creation, replacement, frontmatter updates, marker-scoped section replacement, and soft/hard delete tools
+- Optimistic concurrency through `base_sha256` on mutating tools
 - Structured operational logs with hashed tool arguments by default
-- Minimal HTTP server routes:
-  - `GET /healthz`
-  - `GET /.well-known/oauth-protected-resource`
-  - `GET /tools`
-  - `POST /mcp` for JSON-RPC `tools/list` and injected `tools/call` handlers
+- SQLite write audit records and recovery diagnostics for interrupted writes
+- Framework-aware record creation for LYT, PARA, Zettelkasten, or custom schemas
+- Inbox and date-based capture flows, including stable `source_id` replacement
+- Daily note read, append, and marker repair tools
+- Optional OCR job-contract tools for notebook workflows
 
-Production mode validates bearer JWT access tokens against configured trusted issuers,
-audience, expiration, allowed algorithms, and issuer JWKS.
+## Status
 
-Development mode is available for local testing with a development bearer token shape:
+This project is ready for real deployment behind HTTPS with JWT authentication and a carefully scoped identity-provider setup. Development mode exists for localhost testing only and should not be exposed on a network.
 
-```http
-Authorization: Bearer scope=vault:read daily:append
-```
+The package is currently private in `package.json`, so the supported installation path is cloning the repository and running the Node service directly.
 
-For local Claude testing, use `auth.mode = "development"` and bind to `127.0.0.1`.
-For remote deployments, use `auth.mode = "jwt"`, configure trusted issuer URLs,
-and expose only HTTPS behind your reverse proxy.
+## Requirements
 
-## Commands
+- Node.js `>=24.0.0`
+- pnpm
+- A markdown vault directory
+- A persistent state directory for SQLite index and audit files
+- For production: an OAuth/OIDC identity provider or service-token issuer that publishes JWKS
+
+## Quick Start
+
+Install dependencies and build the server:
 
 ```bash
 pnpm install
-pnpm test
-pnpm typecheck
 pnpm build
 ```
+
+Create a local config:
+
+```bash
+cp config.example.toml config.local.toml
+```
+
+Edit at least these values:
+
+```toml
+listen = "127.0.0.1:3000"
+public_base_url = "http://127.0.0.1:3000"
+vault_path = "/absolute/path/to/your/markdown/vault"
+state_path = "/absolute/path/to/persistent/mcp-state"
+```
+
+For local-only testing, set:
+
+```toml
+[auth]
+mode = "development"
+```
+
+Run the built server:
+
+```bash
+node dist/server.js --config config.local.toml
+```
+
+The MCP endpoint is:
+
+```text
+http://127.0.0.1:3000/mcp
+```
+
+Development clients can send scopes with:
+
+```http
+Authorization: Bearer scope=vault:read vault:write daily:append
+```
+
+Do not use development auth outside localhost or a private development tunnel.
+
+## Production Deployment
+
+Production deployments should run the Node process behind HTTPS and use JWT auth:
+
+```toml
+[auth]
+mode = "jwt"
+audience = "second-brain-mcp"
+trusted_issuers = [
+  "https://idp.example.com/application/o/second-brain-mcp-human/"
+]
+discovery_authorization_server = "https://idp.example.com/application/o/second-brain-mcp-human/"
+jwks_cache_ttl_seconds = 3600
+jwt_algorithms = ["RS256"]
+```
+
+The server validates issuer, audience, expiration, allowed algorithms, and scopes. It does not mint tokens or manage signing keys; your identity provider or service-token issuer owns that lifecycle.
+
+See [docs/deployment.md](docs/deployment.md) for HTTPS, auth, client integration, scope boundaries, logging, and audit guidance.
+
+## User Guide
+
+See [docs/user-guide.md](docs/user-guide.md) for end-user setup, vault boundary configuration, OCR enablement, the full tool list, logging, soft delete behavior, write audit inspection, and recovery workflows.
+
+## Tool Scopes
+
+Tools are only listed and callable when the bearer token contains the required scope.
+
+| Scope | Capability class |
+|---|---|
+| `vault:read` | Read notes, list folders, search, backlinks, outgoing links, structure discovery |
+| `vault:write` | Create and replace notes, update frontmatter, replace marker sections, create framework records |
+| `vault:delete` | Move notes into the configured MCP trash path |
+| `vault:delete:hard` | Permanently remove notes from disk with optimistic concurrency |
+| `vault:capture` | Inbox and date-based capture workflows |
+| `daily:append` | Append to writable daily-note marker sections |
+| `admin` | Framework management, conflict diagnostics, OCR admin tools, write recovery diagnostics |
+
+## HTTP Surface
+
+| Route | Purpose | Auth |
+|---|---|---|
+| `GET /healthz` | Process liveness check | No bearer token required |
+| `GET /.well-known/oauth-protected-resource` | OAuth protected-resource metadata | No bearer token required |
+| `GET /tools` | Compatibility tool listing | Bearer token required |
+| `POST /mcp` | MCP JSON-RPC endpoint | Bearer token required for `tools/list` and `tools/call` |
+
+`GET /mcp` intentionally returns `405` with `Allow: POST`; this server does not expose an SSE stream.
+
+## Configuration
+
+Start from [config.example.toml](config.example.toml). The most important production controls are:
+
+- `auth.mode = "jwt"` for production bearer-token validation
+- `public_base_url` set to the externally reachable HTTPS origin
+- `vault_path` set to the markdown vault root
+- `state_path` set to durable storage for index and audit databases
+- `security.blocked_paths` for private paths that must be denied to read and write tools
+- `index.blocked_paths` or `index.ignored_globs` for softer index/list/search exclusions
+- `[logging].log_args = false` unless debugging locally
 
 ## Development
 
 ```bash
-pnpm dev -- --config path/to/config.toml
+pnpm dev -- --config config.local.toml
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
-## Deployment
+## Security Notes
 
-See [docs/deployment.md](docs/deployment.md) for production configuration, client integration notes, scope boundaries, logging, and audit diagnostics.
+- Keep production deployments behind HTTPS.
+- Use `auth.mode = "jwt"` for any remote deployment.
+- Grant the smallest set of scopes each client needs.
+- Treat `vault:delete:hard` and `admin` as high-trust scopes.
+- Use `security.blocked_paths` for folders or patterns that should never be exposed to MCP clients.
+- Keep raw argument logging disabled in normal operation because arguments can contain private note paths and vault text.
 
-See [docs/user-guide.md](docs/user-guide.md) for end-user setup, auth/key setup, OCR enablement, the full tool list, logging, and audit lookup workflows.
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
+
+## Contributing
+
+This project is not ready for broad external contribution yet. We will soon create a path for establishing a proper contribution model, including contribution guidelines, issue triage expectations, and review practices.
