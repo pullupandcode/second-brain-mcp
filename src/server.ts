@@ -35,6 +35,24 @@ interface McpToolDefinition {
   inputSchema: JsonObjectSchema;
 }
 
+export interface McpPromptDefinition {
+  name: string;
+  description?: string;
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+  }>;
+}
+
+export interface McpPromptGetResult {
+  description?: string;
+  messages: Array<{
+    role: "user" | "assistant";
+    content: McpTextContent;
+  }>;
+}
+
 interface JsonObjectSchema {
   type: "object";
   properties: Record<string, unknown>;
@@ -44,6 +62,11 @@ interface JsonObjectSchema {
 
 export type ToolHandler = (arguments_: Record<string, unknown>) => McpToolResult | Promise<McpToolResult>;
 export type ToolHandlerMap = Partial<Record<string, ToolHandler>>;
+
+export interface PromptProvider {
+  listPrompts(): McpPromptDefinition[] | Promise<McpPromptDefinition[]>;
+  getPrompt(name: string): McpPromptGetResult | undefined | Promise<McpPromptGetResult | undefined>;
+}
 
 export interface OperationalLogEntry {
   ts: string;
@@ -62,16 +85,26 @@ export interface CreateServerOptions {
   config: ServerConfig;
   tools?: readonly ToolDefinition[];
   toolHandlers?: ToolHandlerMap;
+  promptProvider?: PromptProvider;
   operationalLogger?: OperationalLogger;
 }
 
 export function createHttpServer(options: CreateServerOptions): http.Server {
   const tools = options.tools ?? createToolRegistry();
   const toolHandlers = options.toolHandlers ?? {};
+  const promptProvider = options.promptProvider;
   const operationalLogger = options.operationalLogger;
 
   return http.createServer((request, response) => {
-    void routeRequest(request, response, options.config, tools, toolHandlers, operationalLogger);
+    void routeRequest(
+      request,
+      response,
+      options.config,
+      tools,
+      toolHandlers,
+      promptProvider,
+      operationalLogger
+    );
   });
 }
 
@@ -82,6 +115,7 @@ export async function startHttpServerFromConfigFile(configPath: string): Promise
     config,
     tools: createToolRegistry({ ocrEnabled: config.ocr.enabled }),
     toolHandlers: runtime.handlers,
+    promptProvider: runtime.promptProvider,
     operationalLogger: (entry) => {
       console.log(JSON.stringify(entry));
     }
@@ -100,6 +134,7 @@ async function routeRequest(
   config: ServerConfig,
   tools: readonly ToolDefinition[],
   toolHandlers: ToolHandlerMap,
+  promptProvider: PromptProvider | undefined,
   operationalLogger: OperationalLogger | undefined
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://localhost");
@@ -124,7 +159,15 @@ async function routeRequest(
   }
 
   if (request.method === "POST" && url.pathname === "/mcp") {
-    await handleMcpPost(request, response, config, tools, toolHandlers, operationalLogger);
+    await handleMcpPost(
+      request,
+      response,
+      config,
+      tools,
+      toolHandlers,
+      promptProvider,
+      operationalLogger
+    );
     return;
   }
 
@@ -142,6 +185,7 @@ async function handleMcpPost(
   config: ServerConfig,
   tools: readonly ToolDefinition[],
   toolHandlers: ToolHandlerMap,
+  promptProvider: PromptProvider | undefined,
   operationalLogger: OperationalLogger | undefined
 ): Promise<void> {
   let message: JsonRpcRequest;
@@ -204,6 +248,16 @@ async function handleMcpPost(
     return;
   }
 
+  if (message.method === "prompts/list") {
+    await handlePromptsList(request, response, config, message, promptProvider);
+    return;
+  }
+
+  if (message.method === "prompts/get") {
+    await handlePromptsGet(request, response, config, message, promptProvider);
+    return;
+  }
+
   if (message.method === "initialize") {
     if (message.id === undefined) {
       sendEmpty(response, 202);
@@ -215,7 +269,8 @@ async function handleMcpPost(
       result: {
         protocolVersion: readProtocolVersion(message.params),
         capabilities: {
-          tools: {}
+          tools: {},
+          prompts: {}
         },
         serverInfo: {
           name: "second-brain-mcp",
@@ -264,9 +319,6 @@ function emptyResultForMethod(method: string): object | undefined {
   }
   if (method === "resources/templates/list") {
     return { resourceTemplates: [] };
-  }
-  if (method === "prompts/list") {
-    return { prompts: [] };
   }
   return undefined;
 }
@@ -412,6 +464,9 @@ function namedInputSchemaForTool(name: string): JsonObjectSchema | undefined {
     return objectInputSchema(["name"], {
       name: stringProperty("Overlay name to unregister.")
     });
+  }
+  if (name === "skills_list" || name === "skills_reload") {
+    return emptyInputSchema();
   }
   if (name === "ocr_notebook") {
     return objectInputSchema(["identifier"], {
@@ -646,6 +701,78 @@ async function handleToolCall(
     id: message.id,
     result
   });
+}
+
+async function handlePromptsList(
+  request: IncomingMessage,
+  response: ServerResponse,
+  config: ServerConfig,
+  message: JsonRpcRequest,
+  promptProvider: PromptProvider | undefined
+): Promise<void> {
+  if (message.id === undefined) {
+    sendEmpty(response, 202);
+    return;
+  }
+  const auth = await authenticateHttpRequest(request, response, config);
+  if (auth === undefined) {
+    return;
+  }
+  if (!auth.scopes.has("vault:read")) {
+    sendJson(response, 200, jsonRpcError(message.id, -32003, "forbidden_scope"));
+    return;
+  }
+  sendJson(response, 200, {
+    jsonrpc: "2.0",
+    id: message.id,
+    result: {
+      prompts: promptProvider === undefined ? [] : await promptProvider.listPrompts()
+    }
+  });
+}
+
+async function handlePromptsGet(
+  request: IncomingMessage,
+  response: ServerResponse,
+  config: ServerConfig,
+  message: JsonRpcRequest,
+  promptProvider: PromptProvider | undefined
+): Promise<void> {
+  if (message.id === undefined) {
+    sendEmpty(response, 202);
+    return;
+  }
+  const name = parsePromptGetName(message.params);
+  if (name === undefined) {
+    sendJson(response, 200, jsonRpcError(message.id, -32602, "Invalid params"));
+    return;
+  }
+  const auth = await authenticateHttpRequest(request, response, config);
+  if (auth === undefined) {
+    return;
+  }
+  if (!auth.scopes.has("vault:read")) {
+    sendJson(response, 200, jsonRpcError(message.id, -32003, "forbidden_scope"));
+    return;
+  }
+  const prompt = promptProvider === undefined ? undefined : await promptProvider.getPrompt(name);
+  if (prompt === undefined) {
+    sendJson(response, 200, jsonRpcError(message.id, -32601, "Method not found"));
+    return;
+  }
+  sendJson(response, 200, {
+    jsonrpc: "2.0",
+    id: message.id,
+    result: prompt
+  });
+}
+
+function parsePromptGetName(params: unknown): string | undefined {
+  if (typeof params !== "object" || params === null || Array.isArray(params)) {
+    return undefined;
+  }
+  const name = (params as Record<string, unknown>).name;
+  return typeof name === "string" && name.length > 0 ? name : undefined;
 }
 
 function logToolCall(

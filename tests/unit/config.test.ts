@@ -61,9 +61,26 @@ describe("parseConfig", () => {
     expect(config.audit.retentionMaxRows).toBe(0);
     expect(config.audit.archivePath).toBeUndefined();
     expect(config.framework.schemaPath).toBe("_meta/framework.yaml");
+    expect(config.skills.mapPaths).toEqual([]);
     expect(config.dailyNote.captureDefaultPattern).toBe("B");
     expect(config.ocr.enabled).toBe(false);
     expect(config.logging.logArgs).toBe(false);
+  });
+
+  test("allows skills map paths to be configured", () => {
+    const config = parseConfig(
+      validConfig.replace(
+        `[daily_note]
+capture_default_pattern = "B"`,
+        `[skills]
+map_paths = ["Atlas/Maps/Skills.md", "_meta/skills.md"]
+
+[daily_note]
+capture_default_pattern = "B"`
+      )
+    );
+
+    expect(config.skills.mapPaths).toEqual(["Atlas/Maps/Skills.md", "_meta/skills.md"]);
   });
 
   test("allows the framework schema path to be configured", () => {

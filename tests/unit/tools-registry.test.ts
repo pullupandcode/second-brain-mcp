@@ -76,6 +76,10 @@ describe("tool registry", () => {
     const writeNames = listToolsForScopes(parseScopes("vault:write")).map((tool) => tool.name);
 
     expect(adminNames).toContain("list_write_recovery_diagnostics");
+    expect(adminNames).toContain("skills_list");
+    expect(adminNames).toContain("skills_reload");
     expect(writeNames).not.toContain("list_write_recovery_diagnostics");
+    expect(writeNames).not.toContain("skills_list");
+    expect(writeNames).not.toContain("skills_reload");
   });
 });

@@ -162,7 +162,54 @@ with `framework` set to `lyt`, `para`, or `zettel`.
 
 The generated or copied schema is just a vault file. Edit folders, filenames, templates, frontmatter defaults, and record types to match your system, then run `framework_reload` or restart the server.
 
-## 4. Enable OCR Tools
+## 4. Enable In-Vault Skills
+
+In-vault skills let you keep reusable client instructions as ordinary markdown files in your vault. The server only exposes skills linked from configured Skills Map/MOC files:
+
+```toml
+[skills]
+map_paths = [
+  "Atlas/Maps/Skills.md",
+  "_meta/skills.md"
+]
+```
+
+Each configured map is read as a vault note. The map format is intentionally flexible: it may include frontmatter, callouts, navigation links, grouped sections, compact bullet lists, or expanded entries with descriptions, triggers, dependencies, and paths. Markdown links and wikilinks from that map are treated as candidate skills, and expanded entries may include an optional `Path:` hint when the skill file lives somewhere other than the link text implies:
+
+```markdown
+# Skill Map
+
+## Research System
+
+- [[source-checker]]: Checks claims against linked source notes.
+
+### [[source-checker]]
+
+- **Description**: Checks claims against linked source notes.
+- **Triggers**: `check sources`, `verify this`
+- **Dependencies**: [[citation-style]]
+- **Path**: `/AIOS/Skills/source-checker`
+```
+
+Only candidate files that validate as skills are exposed. A candidate skill must be a markdown note with frontmatter like:
+
+```markdown
+---
+name: research_assistant
+description: Research with my vault conventions.
+---
+
+Use careful sourcing and preserve my note style.
+```
+
+Valid skills are exposed as MCP prompts through `prompts/list` and `prompts/get` for clients with `vault:read`. Notes outside the configured maps, invalid skill files, and paths blocked by `security.blocked_paths` are not exposed.
+
+Admin-scoped diagnostics:
+
+- `skills_list` returns configured map paths and skill load statuses.
+- `skills_reload` reloads configured skills without restarting the server.
+
+## 5. Enable OCR Tools
 
 OCR tools are disabled by default:
 
@@ -186,7 +233,7 @@ When enabled, three additional admin-scoped tools are advertised:
 
 OCR jobs currently expose provider-neutral job contracts. The server can queue and track OCR work, but the actual OCR provider/runtime integration is deployment-specific.
 
-## 5. Tool List and Scopes
+## 6. Tool List and Scopes
 
 Tool visibility is scope-filtered. If a tool is missing from `tools/list`, the token probably lacks the required scope or the tool's optional feature is disabled.
 
@@ -215,6 +262,8 @@ Tool visibility is scope-filtered. If a tool is missing from `tools/list`, the t
 | `list_vault_conflicts` | `admin` | List active conflict quarantine state. |
 | `daily_note_repair_markers` | `admin` | Repair missing daily note markers. |
 | `list_write_recovery_diagnostics` | `admin` | List write attempts without terminal audit events. |
+| `skills_list` | `admin` | List configured in-vault skill load diagnostics. |
+| `skills_reload` | `admin` | Reload configured in-vault skills from skills maps. |
 | `framework_init` | `admin` | Create a starter framework schema. |
 | `framework_reload` | `admin` | Reload framework schema files. |
 | `framework_register` | `admin` | Register a framework overlay. |
@@ -225,7 +274,7 @@ Tool visibility is scope-filtered. If a tool is missing from `tools/list`, the t
 | `ocr_status` | `admin` | Poll OCR job state. Requires `[ocr].enabled = true`. |
 | `ocr_renumber_notebook` | `admin` | Force notebook page renumbering. Requires `[ocr].enabled = true`. |
 
-## 6. Enable Logging and Auditing
+## 7. Enable Logging and Auditing
 
 ### Operational Logs
 

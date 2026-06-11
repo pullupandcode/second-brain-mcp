@@ -113,6 +113,9 @@ function testConfig(vaultPath: string, statePath: string): ServerConfig {
     framework: {
       schemaPath: "_meta/framework.yaml"
     },
+    skills: {
+      mapPaths: []
+    },
     ocr: {
       enabled: false
     },

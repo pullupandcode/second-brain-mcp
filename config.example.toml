@@ -77,3 +77,12 @@ log_args = false
 [framework]
 # Vault-relative path to the base framework schema.
 schema_path = ".meta/framework.yaml"
+
+[skills]
+# Optional vault-relative Skills Map/MOC files. Links and optional Path:
+# hints in these maps identify candidate skill files; only valid skill
+# markdown is exposed to authorized clients as MCP prompts.
+map_paths = [
+  # "Atlas/Maps/Skills.md",
+  # "_meta/skills.md"
+]

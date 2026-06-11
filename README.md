@@ -21,6 +21,7 @@ The server is designed for Obsidian-style markdown vaults, but the core filesyst
 - Framework-aware record creation for LYT, PARA, Zettelkasten, or custom schemas
 - Inbox and date-based capture flows, including stable `source_id` replacement
 - Daily note read, append, and marker repair tools
+- In-vault skill enablement through configured Skills Maps/MOCs exposed as MCP prompts
 - Optional OCR job-contract tools for notebook workflows
 
 ## Status
@@ -137,6 +138,8 @@ Tools are only listed and callable when the bearer token contains the required s
 
 `GET /mcp` intentionally returns `405` with `Allow: POST`; this server does not expose an SSE stream.
 
+MCP prompts are available through `prompts/list` and `prompts/get` when the bearer token includes `vault:read`. Only valid skill files linked from configured `[skills].map_paths` are exposed. Skill maps can be ordinary human-readable markdown with sections, callouts, wikilinks, markdown links, and optional `Path:` hints for expanded skill entries.
+
 ## Configuration
 
 Start from [config.example.toml](config.example.toml). The most important production controls are:
@@ -147,6 +150,7 @@ Start from [config.example.toml](config.example.toml). The most important produc
 - `state_path` set to durable storage for index and audit databases
 - `security.blocked_paths` for private paths that must be denied to read and write tools
 - `index.blocked_paths` or `index.ignored_globs` for softer index/list/search exclusions
+- `[skills].map_paths` for vault-curated skill files that should be exposed as MCP prompts
 - `[logging].log_args = false` unless debugging locally
 
 For a copyable Linking Your Thinking vault schema, see [examples/vault/_meta/framework.lyt.yaml](examples/vault/_meta/framework.lyt.yaml). Copy it into your vault as `_meta/framework.yaml`, or set `[framework].schema_path` to its vault-relative path.

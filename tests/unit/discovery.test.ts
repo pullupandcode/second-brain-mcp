@@ -39,6 +39,9 @@ const config: ServerConfig = {
   framework: {
     schemaPath: "_meta/framework.yaml"
   },
+  skills: {
+    mapPaths: []
+  },
   dailyNote: {
     captureDefaultPattern: "B"
   },

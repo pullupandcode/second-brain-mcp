@@ -46,6 +46,9 @@ export interface ServerConfig {
   framework: {
     schemaPath: string;
   };
+  skills: {
+    mapPaths: string[];
+  };
   dailyNote: {
     captureDefaultPattern: CaptureDefaultPattern;
   };
@@ -92,6 +95,9 @@ interface RawConfig {
   };
   framework?: {
     schema_path?: unknown;
+  };
+  skills?: {
+    map_paths?: unknown;
   };
   daily_note?: {
     capture_default_pattern?: unknown;
@@ -175,6 +181,7 @@ export function parseConfig(source: string): ServerConfig {
     },
     audit: readAuditConfig(raw.audit),
     framework: readFrameworkConfig(raw.framework),
+    skills: readSkillsConfig(raw.skills),
     dailyNote: {
       captureDefaultPattern
     },
@@ -220,6 +227,16 @@ function readFrameworkConfig(value: RawConfig["framework"]): ServerConfig["frame
       framework.schema_path === undefined
         ? "_meta/framework.yaml"
         : normalizeVaultPath(requireString(framework.schema_path, "framework.schema_path"))
+  };
+}
+
+function readSkillsConfig(value: RawConfig["skills"]): ServerConfig["skills"] {
+  if (value === undefined) {
+    return { mapPaths: [] };
+  }
+  const skills = requireObject(value, "skills");
+  return {
+    mapPaths: readOptionalVaultPatternArray(skills.map_paths, "skills.map_paths")
   };
 }
 

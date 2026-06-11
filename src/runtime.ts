@@ -24,7 +24,8 @@ import type {
 } from "./framework/tools.js";
 import { createOcrTools, OcrJobQueue } from "./ocr/jobs.js";
 import type { OcrNotebookInput } from "./ocr/jobs.js";
-import type { ToolHandlerMap } from "./server.js";
+import { loadVaultSkills, type LoadVaultSkillsResult } from "./skills/loader.js";
+import type { PromptProvider, ToolHandlerMap } from "./server.js";
 import type { SearchResult } from "./vault/index.js";
 import type { FrontmatterValue } from "./vault/markdown.js";
 import { VaultWriteAuditStore, rotateWriteAuditIfNeeded } from "./vault/audit.js";
@@ -35,6 +36,7 @@ import { VaultWriter } from "./vault/writer.js";
 
 export interface RuntimeToolHandlers {
   handlers: ToolHandlerMap;
+  promptProvider: PromptProvider;
   close(): void;
 }
 
@@ -86,9 +88,45 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
       index,
       writeTools
     });
+  let skillLoad = await loadVaultSkills({
+    reader,
+    mapPaths: config.skills.mapPaths
+  });
+  const reloadSkills = async (): Promise<LoadVaultSkillsResult> => {
+    skillLoad = await loadVaultSkills({
+      reader,
+      mapPaths: config.skills.mapPaths
+    });
+    return skillLoad;
+  };
   const ocrTools = config.ocr.enabled ? createOcrTools(new OcrJobQueue()) : undefined;
 
   return {
+    promptProvider: {
+      listPrompts: () =>
+        skillLoad.skills.map((skill) => ({
+          name: skill.name,
+          description: skill.description
+        })),
+      getPrompt: (name) => {
+        const skill = skillLoad.skills.find((candidate) => candidate.name === name);
+        if (skill === undefined) {
+          return undefined;
+        }
+        return {
+          description: skill.description,
+          messages: [
+            {
+              role: "user",
+              content: {
+                type: "text",
+                text: skill.content
+              }
+            }
+          ]
+        };
+      }
+    },
     handlers: {
       read_note: async (arguments_) =>
         structuredResult(await readTools.read_note(requireString(arguments_, "path"))),
@@ -244,6 +282,18 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
         }),
       list_write_recovery_diagnostics: () =>
         structuredResult({ incompleteWrites: auditStore.listIncompleteWrites() }),
+      skills_list: () =>
+        structuredResult({
+          mapPaths: config.skills.mapPaths,
+          skills: skillLoad.statuses
+        }),
+      skills_reload: async () => {
+        const result = await reloadSkills();
+        return structuredResult({
+          mapPaths: config.skills.mapPaths,
+          skills: result.statuses
+        });
+      },
       framework_init: async (arguments_) => {
         const input: FrameworkInitInput = {
           framework: requireFrameworkPreset(arguments_, "framework")

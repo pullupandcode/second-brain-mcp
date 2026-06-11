@@ -133,7 +133,8 @@ function config(): ServerConfig {
     deletes: { trashPath: ".trash/mcp" },
     writes: { cooldownSeconds: 0 },
     audit: { retentionMaxRows: 0 },
-    framework: { schemaPath: "_meta/framework.yaml" },
+    framework: { schemaPath: ".meta/framework.yaml" },
+    skills: { mapPaths: [] },
     dailyNote: { captureDefaultPattern: "B" },
     ocr: { enabled: false },
     logging: { logArgs: false }
