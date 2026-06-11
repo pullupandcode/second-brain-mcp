@@ -92,6 +92,7 @@ describe("createRuntimeToolHandlers", () => {
 
     const config = testConfig(vaultPath, statePath);
     config.security.blockedPaths = ["AIOS/**"];
+    config.index.blockedPaths = ["AIOS/**"];
     config.skills.mapPaths = ["AIOS/Maps/Skill Map.md"];
     const runtime = await createRuntimeToolHandlers(config);
     try {

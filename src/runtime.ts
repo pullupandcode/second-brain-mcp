@@ -48,7 +48,7 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
 
   const skillReader = new VaultReader({
     vaultRoot: config.vaultPath,
-    ignoredGlobs: [...config.index.ignoredGlobs, ...config.index.blockedPaths]
+    ignoredGlobs: []
   });
   let skillLoad = await loadVaultSkills({
     reader: skillReader,
