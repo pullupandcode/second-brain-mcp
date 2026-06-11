@@ -166,4 +166,69 @@ describe("loadVaultSkills", () => {
       })
     ]);
   });
+
+  test("does not load configured maps as candidate skills", async () => {
+    await writeFile(
+      join(vaultRoot, "Skill Map.md"),
+      [
+        "---",
+        "name: Skill Map",
+        "---",
+        "# Skill Map",
+        "",
+        "- [[Skill Map]]",
+        "- [[Skills/Coach]]"
+      ].join("\n")
+    );
+    await writeFile(
+      join(vaultRoot, "Skills", "Coach.md"),
+      [
+        "---",
+        "name: coach",
+        "description: Coach through tradeoffs.",
+        "---",
+        "Ask a focused question."
+      ].join("\n")
+    );
+    const reader = new VaultReader({
+      vaultRoot,
+      ignoredGlobs: [],
+      blockedPaths: []
+    });
+
+    const result = await loadVaultSkills({
+      reader,
+      mapPaths: ["Skill Map.md"]
+    });
+
+    expect(result.skills.map((skill) => skill.name)).toEqual(["coach"]);
+    expect(result.statuses.map((status) => status.path)).not.toContain("Skill Map.md");
+  });
+
+  test("rejects blank skill descriptions", async () => {
+    await writeFile(join(vaultRoot, "Atlas", "Maps", "Skills.md"), "- [[Skills/Blank Description]]\n");
+    await writeFile(
+      join(vaultRoot, "Skills", "Blank Description.md"),
+      ["---", "name: blank_description", "description: |", "---", "Body."].join("\n")
+    );
+    const reader = new VaultReader({
+      vaultRoot,
+      ignoredGlobs: [],
+      blockedPaths: []
+    });
+
+    const result = await loadVaultSkills({
+      reader,
+      mapPaths: ["Atlas/Maps/Skills.md"]
+    });
+
+    expect(result.skills).toEqual([]);
+    expect(result.statuses).toEqual([
+      expect.objectContaining({
+        path: "Skills/Blank Description.md",
+        status: "error",
+        error: "skill frontmatter description must be a non-empty string"
+      })
+    ]);
+  });
 });

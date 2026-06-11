@@ -32,12 +32,16 @@ export interface LoadVaultSkillsResult {
 export async function loadVaultSkills(
   options: LoadVaultSkillsOptions
 ): Promise<LoadVaultSkillsResult> {
+  const normalizedMapPaths = new Set(options.mapPaths.map(normalizeVaultPath));
   const mapResult = await readLinkedSkillPaths(options.reader, options.mapPaths);
   const statuses: VaultSkillStatus[] = [];
   const byName = new Map<string, LoadedVaultSkill>();
 
   statuses.push(...mapResult.statuses);
   for (const skillPath of mapResult.linkedPaths) {
+    if (normalizedMapPaths.has(skillPath)) {
+      continue;
+    }
     try {
       const note = await options.reader.readNote(skillPath);
       const skill = parseSkillNote(note.path, note.content);
@@ -178,7 +182,14 @@ function shouldLoadMarkdownLink(target: string): boolean {
 }
 
 function stringField(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed === "|" || trimmed === ">") {
+    return undefined;
+  }
+  return trimmed;
 }
 
 function skillLoadErrorMessage(error: unknown): string {
