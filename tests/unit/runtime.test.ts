@@ -98,6 +98,16 @@ describe("createRuntimeToolHandlers", () => {
       await expect(runtime.handlers.read_note?.({ path: "AIOS/Skills/Coach.md" })).rejects.toThrow(
         /Vault path is blocked/
       );
+      expect(await runtime.handlers.search?.({ query: "Coach" })).toMatchObject({
+        structuredContent: {
+          result: []
+        }
+      });
+      expect(await runtime.handlers.search?.({ query: "Skill Map" })).toMatchObject({
+        structuredContent: {
+          result: []
+        }
+      });
       expect(await runtime.promptProvider.listPrompts()).toEqual([
         {
           name: "coach",
