@@ -748,7 +748,7 @@ describe("createHttpServer", () => {
       method: "POST",
       headers: {
         accept: "application/json, text/event-stream",
-        authorization: "Bearer scope=vault:read",
+        authorization: "Bearer scope=skills:read",
         "content-type": "application/json",
         "mcp-method": "prompts/list"
       },
@@ -776,7 +776,7 @@ describe("createHttpServer", () => {
       method: "POST",
       headers: {
         accept: "application/json, text/event-stream",
-        authorization: "Bearer scope=vault:read",
+        authorization: "Bearer scope=skills:read",
         "content-type": "application/json",
         "mcp-method": "prompts/get",
         "mcp-name": "research_assistant"
@@ -808,7 +808,7 @@ describe("createHttpServer", () => {
     });
   });
 
-  test("requires vault read scope for MCP prompts", async () => {
+  test("requires skills read scope for MCP prompts", async () => {
     const baseUrl = await startServer(
       {},
       {
@@ -842,6 +842,44 @@ describe("createHttpServer", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toContain("Bearer");
+  });
+
+  test("does not allow vault read scope to fetch MCP prompts", async () => {
+    const baseUrl = await startServer(
+      {},
+      config,
+      undefined,
+      undefined,
+      {
+        listPrompts: () => [{ name: "private_skill", description: "Private skill." }],
+        getPrompt: () => undefined
+      }
+    );
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:read",
+        "content-type": "application/json",
+        "mcp-method": "prompts/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "prompts-vault-read",
+        method: "prompts/list"
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: "prompts-vault-read",
+      error: {
+        code: -32003,
+        message: "forbidden_scope"
+      }
+    });
   });
 
   test("dispatches JSON-RPC tools/call to registered handlers", async () => {

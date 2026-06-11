@@ -84,7 +84,7 @@ http://127.0.0.1:3000/mcp
 Development clients can send scopes with:
 
 ```http
-Authorization: Bearer scope=vault:read vault:write daily:append
+Authorization: Bearer scope=vault:read skills:read vault:write daily:append
 ```
 
 Do not use development auth outside localhost or a private development tunnel.
@@ -120,6 +120,7 @@ Tools are only listed and callable when the bearer token contains the required s
 | Scope | Capability class |
 |---|---|
 | `vault:read` | Read notes, list folders, search, backlinks, outgoing links, structure discovery |
+| `skills:read` | List and get approved in-vault skills as MCP prompts |
 | `vault:write` | Create and replace notes, update frontmatter, replace marker sections, create framework records |
 | `vault:delete` | Move notes into the configured MCP trash path |
 | `vault:delete:hard` | Permanently remove notes from disk with optimistic concurrency |
@@ -138,7 +139,7 @@ Tools are only listed and callable when the bearer token contains the required s
 
 `GET /mcp` intentionally returns `405` with `Allow: POST`; this server does not expose an SSE stream.
 
-MCP prompts are available through `prompts/list` and `prompts/get` when the bearer token includes `vault:read`. Only valid skill files linked from configured `[skills].map_paths` are exposed. Skill maps can be ordinary human-readable markdown with sections, callouts, wikilinks, markdown links, and optional `Path:` hints for expanded skill entries.
+MCP prompts are available through `prompts/list` and `prompts/get` when the bearer token includes `skills:read`. Only valid skill files linked from configured `[skills].map_paths` are exposed. Skill maps can be ordinary human-readable markdown with sections, callouts, wikilinks, markdown links, and optional `Path:` hints for expanded skill entries.
 
 ## Configuration
 

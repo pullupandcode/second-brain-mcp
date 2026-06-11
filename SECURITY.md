@@ -56,7 +56,7 @@ The intended production security model is:
 - Mutating tools use optimistic concurrency with `base_sha256`.
 - Operational logs hash tool arguments by default.
 - Successful writes and write attempts are recorded in the write audit database.
-- In-vault skills are exposed only when linked from configured Skills Maps/MOCs and requested by authorized clients.
+- In-vault skills are exposed only when linked from configured Skills Maps/MOCs and requested by clients with `skills:read`.
 
 The following are outside the intended trust boundary:
 
@@ -88,6 +88,7 @@ See [docs/deployment.md](docs/deployment.md) and [docs/user-guide.md](docs/user-
 | Scope | Risk |
 |---|---|
 | `vault:read` | Can expose readable note content and metadata. |
+| `skills:read` | Can expose approved in-vault skill instructions, preferences, workflows, and interaction rules. |
 | `vault:write` | Can create or modify notes and frontmatter. |
 | `vault:delete` | Can move notes into the configured MCP trash path. |
 | `vault:delete:hard` | Can permanently remove notes from disk. |

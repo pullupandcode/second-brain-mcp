@@ -22,6 +22,7 @@ jwt_algorithms = ["RS256"]
 # client does not send Authorization: Bearer scope=... .
 development_default_scopes = [
   "vault:read",
+  "skills:read",
   "vault:write",
   "vault:capture",
   "daily:append"

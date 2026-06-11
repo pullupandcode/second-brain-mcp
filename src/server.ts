@@ -718,7 +718,7 @@ async function handlePromptsList(
   if (auth === undefined) {
     return;
   }
-  if (!auth.scopes.has("vault:read")) {
+  if (!auth.scopes.has("skills:read")) {
     sendJson(response, 200, jsonRpcError(message.id, -32003, "forbidden_scope"));
     return;
   }
@@ -751,7 +751,7 @@ async function handlePromptsGet(
   if (auth === undefined) {
     return;
   }
-  if (!auth.scopes.has("vault:read")) {
+  if (!auth.scopes.has("skills:read")) {
     sendJson(response, 200, jsonRpcError(message.id, -32003, "forbidden_scope"));
     return;
   }

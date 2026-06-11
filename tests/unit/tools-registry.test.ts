@@ -5,8 +5,9 @@ import { createToolRegistry, listToolsForScopes } from "../../src/tools/registry
 
 describe("parseScopes", () => {
   test("keeps only known scopes from a space-delimited claim", () => {
-    expect([...parseScopes("vault:read daily:append unknown")]).toEqual([
+    expect([...parseScopes("vault:read skills:read daily:append unknown")]).toEqual([
       "vault:read",
+      "skills:read",
       "daily:append"
     ]);
   });

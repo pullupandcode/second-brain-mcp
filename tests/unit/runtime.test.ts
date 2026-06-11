@@ -70,6 +70,54 @@ describe("createRuntimeToolHandlers", () => {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  test("loads configured skills from paths blocked to ordinary vault reads", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-runtime-skills-"));
+    const vaultPath = join(tempRoot, "vault");
+    const statePath = join(tempRoot, "state");
+    await mkdir(join(vaultPath, "AIOS", "Maps"), { recursive: true });
+    await mkdir(join(vaultPath, "AIOS", "Skills"), { recursive: true });
+    await mkdir(statePath, { recursive: true });
+    await writeFile(join(vaultPath, "AIOS", "Maps", "Skill Map.md"), "- [[AIOS/Skills/Coach]]\n");
+    await writeFile(
+      join(vaultPath, "AIOS", "Skills", "Coach.md"),
+      [
+        "---",
+        "name: coach",
+        "description: Coach the user through tradeoffs.",
+        "---",
+        "Ask one focused question, then summarize the decision."
+      ].join("\n")
+    );
+
+    const config = testConfig(vaultPath, statePath);
+    config.security.blockedPaths = ["AIOS/**"];
+    config.skills.mapPaths = ["AIOS/Maps/Skill Map.md"];
+    const runtime = await createRuntimeToolHandlers(config);
+    try {
+      await expect(runtime.handlers.read_note?.({ path: "AIOS/Skills/Coach.md" })).rejects.toThrow(
+        /Vault path is blocked/
+      );
+      expect(await runtime.promptProvider.listPrompts()).toEqual([
+        {
+          name: "coach",
+          description: "Coach the user through tradeoffs."
+        }
+      ]);
+      expect(await runtime.promptProvider.getPrompt("coach")).toMatchObject({
+        messages: [
+          {
+            content: {
+              text: "Ask one focused question, then summarize the decision."
+            }
+          }
+        ]
+      });
+    } finally {
+      runtime.close();
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 function testConfig(vaultPath: string, statePath: string): ServerConfig {

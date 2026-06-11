@@ -55,6 +55,7 @@ For local-only testing, use:
 mode = "development"
 development_default_scopes = [
   "vault:read",
+  "skills:read",
   "vault:write",
   "vault:capture",
   "daily:append",
@@ -65,7 +66,7 @@ development_default_scopes = [
 Clients can also send explicit development scopes:
 
 ```http
-Authorization: Bearer scope=vault:read vault:write
+Authorization: Bearer scope=vault:read skills:read vault:write
 ```
 
 Do not expose development mode outside localhost or a private development tunnel.
@@ -202,7 +203,7 @@ description: Research with my vault conventions.
 Use careful sourcing and preserve my note style.
 ```
 
-Valid skills are exposed as MCP prompts through `prompts/list` and `prompts/get` for clients with `vault:read`. Notes outside the configured maps, invalid skill files, and paths blocked by `security.blocked_paths` are not exposed.
+Valid skills are exposed as MCP prompts through `prompts/list` and `prompts/get` for clients with `skills:read`. You can put skill maps and skill files under `security.blocked_paths` to keep ordinary vault-read tools such as `read_note`, `list_folder`, and `search` from accessing them. The skill loader still reads only configured maps and their linked or path-hinted candidate skill files.
 
 Admin-scoped diagnostics:
 
@@ -249,6 +250,8 @@ Tool visibility is scope-filtered. If a tool is missing from `tools/list`, the t
 | `list_record_types` | `vault:read` | List effective framework record types. |
 | `get_vault_structure` | `vault:read` | Return folder map and framework type list. |
 | `link_to_page` | `vault:read` | Return a stable OCR page wikilink. |
+| `prompts/list` | `skills:read` | List approved in-vault skills as MCP prompts. |
+| `prompts/get` | `skills:read` | Get an approved in-vault skill prompt. |
 | `create_note` | `vault:write` | Create a note and fail if the path already exists. |
 | `replace_note` | `vault:write` | Replace a full note with optimistic concurrency. |
 | `update_frontmatter` | `vault:write` | Merge frontmatter keys. |

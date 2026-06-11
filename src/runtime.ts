@@ -51,6 +51,10 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
     ignoredGlobs: [...config.index.ignoredGlobs, ...config.index.blockedPaths],
     blockedPaths: config.security.blockedPaths
   });
+  const skillReader = new VaultReader({
+    vaultRoot: config.vaultPath,
+    ignoredGlobs: [...config.index.ignoredGlobs, ...config.index.blockedPaths]
+  });
   const index = new VaultIndex({ reader, sqlitePath: config.index.sqlitePath });
   await index.rebuild();
   const readTools = createVaultReadTools(reader, index);
@@ -89,12 +93,12 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
       writeTools
     });
   let skillLoad = await loadVaultSkills({
-    reader,
+    reader: skillReader,
     mapPaths: config.skills.mapPaths
   });
   const reloadSkills = async (): Promise<LoadVaultSkillsResult> => {
     skillLoad = await loadVaultSkills({
-      reader,
+      reader: skillReader,
       mapPaths: config.skills.mapPaths
     });
     return skillLoad;
