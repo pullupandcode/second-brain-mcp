@@ -46,14 +46,19 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
   }
   await mkdir(config.statePath, { recursive: true });
 
-  const reader = new VaultReader({
-    vaultRoot: config.vaultPath,
-    ignoredGlobs: [...config.index.ignoredGlobs, ...config.index.blockedPaths],
-    blockedPaths: config.security.blockedPaths
-  });
   const skillReader = new VaultReader({
     vaultRoot: config.vaultPath,
     ignoredGlobs: [...config.index.ignoredGlobs, ...config.index.blockedPaths]
+  });
+  let skillLoad = await loadVaultSkills({
+    reader: skillReader,
+    mapPaths: config.skills.mapPaths
+  });
+  const effectiveBlockedPaths = buildEffectiveBlockedPaths(config, skillLoad);
+  const reader = new VaultReader({
+    vaultRoot: config.vaultPath,
+    ignoredGlobs: [...config.index.ignoredGlobs, ...config.index.blockedPaths],
+    blockedPaths: effectiveBlockedPaths
   });
   const index = new VaultIndex({ reader, sqlitePath: config.index.sqlitePath });
   await index.rebuild();
@@ -61,7 +66,7 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
   const writer = new VaultWriter({
     vaultRoot: config.vaultPath,
     cooldownSeconds: config.writes.cooldownSeconds,
-    blockedPaths: config.security.blockedPaths,
+    blockedPaths: effectiveBlockedPaths,
     trashPath: config.deletes.trashPath
   });
   const writeAuditPath = path.join(config.statePath, "write-audit.sqlite");
@@ -92,15 +97,12 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
       index,
       writeTools
     });
-  let skillLoad = await loadVaultSkills({
-    reader: skillReader,
-    mapPaths: config.skills.mapPaths
-  });
   const reloadSkills = async (): Promise<LoadVaultSkillsResult> => {
     skillLoad = await loadVaultSkills({
       reader: skillReader,
       mapPaths: config.skills.mapPaths
     });
+    replaceEffectiveBlockedPaths(effectiveBlockedPaths, config, skillLoad);
     return skillLoad;
   };
   const ocrTools = config.ocr.enabled ? createOcrTools(new OcrJobQueue()) : undefined;
@@ -361,6 +363,32 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
       auditStore.close();
     }
   };
+}
+
+function buildEffectiveBlockedPaths(
+  config: ServerConfig,
+  skillLoad: LoadVaultSkillsResult
+): string[] {
+  const paths = new Set<string>(config.security.blockedPaths);
+  for (const mapPath of config.skills.mapPaths) {
+    paths.add(mapPath);
+  }
+  for (const status of skillLoad.statuses) {
+    paths.add(status.path);
+  }
+  return [...paths];
+}
+
+function replaceEffectiveBlockedPaths(
+  effectiveBlockedPaths: string[],
+  config: ServerConfig,
+  skillLoad: LoadVaultSkillsResult
+): void {
+  effectiveBlockedPaths.splice(
+    0,
+    effectiveBlockedPaths.length,
+    ...buildEffectiveBlockedPaths(config, skillLoad)
+  );
 }
 
 function findMaps(

@@ -128,6 +128,52 @@ describe("createRuntimeToolHandlers", () => {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  test("hides configured skill maps from ordinary search even outside blocked folders", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "second-brain-runtime-root-skill-map-"));
+    const vaultPath = join(tempRoot, "vault");
+    const statePath = join(tempRoot, "state");
+    await mkdir(join(vaultPath, "AIOS", "Skills"), { recursive: true });
+    await mkdir(statePath, { recursive: true });
+    await writeFile(
+      join(vaultPath, "Skill Map.md"),
+      "# Skills grouped by System\n\n- [[AIOS/Skills/Coach]]: Helps with AIOS skills.\n"
+    );
+    await writeFile(
+      join(vaultPath, "AIOS", "Skills", "Coach.md"),
+      [
+        "---",
+        "name: coach",
+        "description: Coach the user through tradeoffs.",
+        "---",
+        "Ask one focused question, then summarize the decision."
+      ].join("\n")
+    );
+
+    const config = testConfig(vaultPath, statePath);
+    config.security.blockedPaths = ["AIOS/**"];
+    config.skills.mapPaths = ["Skill Map.md"];
+    const runtime = await createRuntimeToolHandlers(config);
+    try {
+      await expect(runtime.handlers.read_note?.({ path: "Skill Map.md" })).rejects.toThrow(
+        /Vault path is blocked/
+      );
+      expect(await runtime.handlers.search?.({ query: "AIOS skills" })).toMatchObject({
+        structuredContent: {
+          result: []
+        }
+      });
+      expect(await runtime.promptProvider.listPrompts()).toEqual([
+        {
+          name: "coach",
+          description: "Coach the user through tradeoffs."
+        }
+      ]);
+    } finally {
+      runtime.close();
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 function testConfig(vaultPath: string, statePath: string): ServerConfig {
