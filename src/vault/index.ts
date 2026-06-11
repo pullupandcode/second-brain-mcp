@@ -120,6 +120,7 @@ export class VaultIndex {
     const rows = this.db.prepare(sql).all(...params) as NoteRow[];
     return rows
       .map(rowToSearchResult)
+      .filter((result) => !this.reader.isBlocked(result.path))
       .filter((result) => filters.tag === undefined || result.tags.includes(filters.tag));
   }
 
@@ -127,10 +128,13 @@ export class VaultIndex {
     const rows = this.db
       .prepare("SELECT DISTINCT source_path AS path FROM links WHERE target = ? ORDER BY source_path")
       .all(pathOrAlias) as PathRow[];
-    return rows.map((row) => row.path);
+    return rows.map((row) => row.path).filter((path) => !this.reader.isBlocked(path));
   }
 
   getOutgoingLinks(path: string): string[] {
+    if (this.reader.isBlocked(path)) {
+      return [];
+    }
     const rows = this.db
       .prepare("SELECT target AS path FROM links WHERE source_path = ? ORDER BY target")
       .all(path) as PathRow[];
@@ -141,6 +145,9 @@ export class VaultIndex {
     const row = this.db.prepare("SELECT path FROM notes WHERE source_id = ?").get(sourceId) as
       | PathRow
       | undefined;
+    if (row !== undefined && this.reader.isBlocked(row.path)) {
+      return undefined;
+    }
     return row?.path;
   }
 

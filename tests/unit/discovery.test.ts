@@ -39,6 +39,9 @@ const config: ServerConfig = {
   framework: {
     schemaPath: "_meta/framework.yaml"
   },
+  skills: {
+    mapPaths: []
+  },
   dailyNote: {
     captureDefaultPattern: "B"
   },
@@ -57,6 +60,7 @@ describe("buildProtectedResourceMetadata", () => {
       authorization_servers: ["https://idp.example.com/application/o/second-brain-mcp-human/"],
       scopes_supported: [
         "vault:read",
+        "skills:read",
         "vault:write",
         "vault:delete",
         "vault:delete:hard",

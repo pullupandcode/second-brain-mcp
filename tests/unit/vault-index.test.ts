@@ -111,6 +111,27 @@ The private alpaca plan links to [[Home]].
 
     index.close();
   });
+
+  test("filters blocked paths at query time even if stale rows exist", async () => {
+    const index = await buildIndex(["AIOS/**"]);
+    seedIndexedNote(index, {
+      path: "AIOS/Maps/Skill Map.md",
+      title: "Skill Map",
+      content: "Approved skills include [[AIOS/Skills/Coach]].",
+      tags: ["skills"],
+      aliases: [],
+      sourceId: "skill-map",
+      sha256: "stale-map"
+    });
+    seedIndexedLink(index, "AIOS/Maps/Skill Map.md", "Home");
+
+    expect(index.search("Approved").map((result) => result.path)).toEqual([]);
+    expect(index.search("", { tag: "skills" }).map((result) => result.path)).toEqual([]);
+    expect(index.findBySourceId("skill-map")).toBeUndefined();
+    expect(index.getBacklinks("Home")).toEqual(["Calendar/Days/2026-05-05.md"]);
+
+    index.close();
+  });
 });
 
 async function buildIndex(blockedPaths: string[] = []): Promise<VaultIndex> {
@@ -122,4 +143,51 @@ async function buildIndex(blockedPaths: string[] = []): Promise<VaultIndex> {
   const index = new VaultIndex({ reader, sqlitePath: ":memory:" });
   await index.rebuild();
   return index;
+}
+
+function seedIndexedNote(
+  index: VaultIndex,
+  note: {
+    path: string;
+    title: string;
+    content: string;
+    tags: string[];
+    aliases: string[];
+    sourceId: string;
+    sha256: string;
+  }
+): void {
+  (
+    index as unknown as {
+      insertNote(
+        path: string,
+        title: string,
+        content: string,
+        tags: string[],
+        aliases: string[],
+        sourceId: string,
+        sha256: string
+      ): void;
+    }
+  ).insertNote(
+    note.path,
+    note.title,
+    note.content,
+    note.tags,
+    note.aliases,
+    note.sourceId,
+    note.sha256
+  );
+}
+
+function seedIndexedLink(index: VaultIndex, sourcePath: string, target: string): void {
+  (
+    index as unknown as {
+      db: {
+        prepare(sql: string): {
+          run(...params: unknown[]): unknown;
+        };
+      };
+    }
+  ).db.prepare("INSERT INTO links (source_path, target) VALUES (?, ?)").run(sourcePath, target);
 }

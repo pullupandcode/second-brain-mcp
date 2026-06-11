@@ -10,7 +10,10 @@ describe("authenticateRequest", () => {
   test("validates a trusted RS256 JWT and returns known scopes", async () => {
     const { publicKey, privateKey } = await generateKeyPair("RS256");
     const jwk = await exportJWK(publicKey);
-    const token = await new SignJWT({ scope: "vault:read unknown admin", client_id: "claude" })
+    const token = await new SignJWT({
+      scope: "vault:read skills:read unknown admin",
+      client_id: "claude"
+    })
       .setProtectedHeader({ alg: "RS256", kid: "test-key" })
       .setIssuer(issuer.href)
       .setAudience("second-brain-mcp")
@@ -26,7 +29,7 @@ describe("authenticateRequest", () => {
 
     expect(result.subject).toBe("user-123");
     expect(result.clientId).toBe("claude");
-    expect([...result.scopes].sort()).toEqual(["admin", "vault:read"]);
+    expect([...result.scopes].sort()).toEqual(["admin", "skills:read", "vault:read"]);
   });
 
   test("rejects missing bearer tokens in jwt mode", async () => {
@@ -133,7 +136,8 @@ function config(): ServerConfig {
     deletes: { trashPath: ".trash/mcp" },
     writes: { cooldownSeconds: 0 },
     audit: { retentionMaxRows: 0 },
-    framework: { schemaPath: "_meta/framework.yaml" },
+    framework: { schemaPath: ".meta/framework.yaml" },
+    skills: { mapPaths: [] },
     dailyNote: { captureDefaultPattern: "B" },
     ocr: { enabled: false },
     logging: { logArgs: false }

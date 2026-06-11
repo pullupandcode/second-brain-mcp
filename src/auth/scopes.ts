@@ -1,5 +1,6 @@
 export const KNOWN_SCOPES = [
   "vault:read",
+  "skills:read",
   "vault:write",
   "vault:delete",
   "vault:delete:hard",

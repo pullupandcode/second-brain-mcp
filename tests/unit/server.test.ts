@@ -47,6 +47,9 @@ const config: ServerConfig = {
   framework: {
     schemaPath: "_meta/framework.yaml"
   },
+  skills: {
+    mapPaths: []
+  },
   dailyNote: {
     captureDefaultPattern: "B"
   },
@@ -612,7 +615,8 @@ describe("createHttpServer", () => {
       result: {
         protocolVersion: "2025-03-26",
         capabilities: {
-          tools: {}
+          tools: {},
+          prompts: {}
         },
         serverInfo: {
           name: "second-brain-mcp",
@@ -683,8 +687,7 @@ describe("createHttpServer", () => {
   test.each([
     ["ping", {}],
     ["resources/list", { resources: [] }],
-    ["resources/templates/list", { resourceTemplates: [] }],
-    ["prompts/list", { prompts: [] }]
+    ["resources/templates/list", { resourceTemplates: [] }]
   ])("serves JSON-RPC %s over the MCP endpoint", async (method, result) => {
     const baseUrl = await startServer();
 
@@ -707,6 +710,175 @@ describe("createHttpServer", () => {
       jsonrpc: "2.0",
       id: method,
       result
+    });
+  });
+
+  test("serves enabled vault skills through MCP prompts", async () => {
+    const baseUrl = await startServer(
+      {},
+      config,
+      undefined,
+      undefined,
+      {
+        listPrompts: () => [
+          {
+            name: "research_assistant",
+            description: "Research with the user's vault conventions."
+          }
+        ],
+        getPrompt: (name) =>
+          name === "research_assistant"
+            ? {
+                description: "Research with the user's vault conventions.",
+                messages: [
+                  {
+                    role: "user",
+                    content: {
+                      type: "text",
+                      text: "Use careful sourcing and preserve the user's note style."
+                    }
+                  }
+                ]
+              }
+            : undefined
+      }
+    );
+
+    const listResponse = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=skills:read",
+        "content-type": "application/json",
+        "mcp-method": "prompts/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "prompts-list",
+        method: "prompts/list"
+      })
+    });
+    expect(listResponse.status).toBe(200);
+    expect(await listResponse.json()).toEqual({
+      jsonrpc: "2.0",
+      id: "prompts-list",
+      result: {
+        prompts: [
+          {
+            name: "research_assistant",
+            description: "Research with the user's vault conventions."
+          }
+        ]
+      }
+    });
+
+    const getResponse = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=skills:read",
+        "content-type": "application/json",
+        "mcp-method": "prompts/get",
+        "mcp-name": "research_assistant"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "prompts-get",
+        method: "prompts/get",
+        params: { name: "research_assistant" }
+      })
+    });
+
+    expect(getResponse.status).toBe(200);
+    expect(await getResponse.json()).toEqual({
+      jsonrpc: "2.0",
+      id: "prompts-get",
+      result: {
+        description: "Research with the user's vault conventions.",
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: "Use careful sourcing and preserve the user's note style."
+            }
+          }
+        ]
+      }
+    });
+  });
+
+  test("requires skills read scope for MCP prompts", async () => {
+    const baseUrl = await startServer(
+      {},
+      {
+        ...config,
+        auth: {
+          ...config.auth,
+          mode: "jwt"
+        }
+      },
+      undefined,
+      undefined,
+      {
+        listPrompts: () => [{ name: "private_skill", description: "Private skill." }],
+        getPrompt: () => undefined
+      }
+    );
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-method": "prompts/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "prompts-auth",
+        method: "prompts/list"
+      })
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toContain("Bearer");
+  });
+
+  test("does not allow vault read scope to fetch MCP prompts", async () => {
+    const baseUrl = await startServer(
+      {},
+      config,
+      undefined,
+      undefined,
+      {
+        listPrompts: () => [{ name: "private_skill", description: "Private skill." }],
+        getPrompt: () => undefined
+      }
+    );
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer scope=vault:read",
+        "content-type": "application/json",
+        "mcp-method": "prompts/list"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "prompts-vault-read",
+        method: "prompts/list"
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: "prompts-vault-read",
+      error: {
+        code: -32003,
+        message: "forbidden_scope"
+      }
     });
   });
 
@@ -2127,12 +2299,14 @@ async function startServer(
   toolHandlers: ToolHandlerMap = {},
   serverConfig: ServerConfig = config,
   operationalLogger?: OperationalLogger,
-  tools?: CreateServerOptions["tools"]
+  tools?: CreateServerOptions["tools"],
+  promptProvider?: CreateServerOptions["promptProvider"]
 ): Promise<string> {
   const server = createHttpServer({
     config: serverConfig,
     toolHandlers,
     ...(tools === undefined ? {} : { tools }),
+    ...(promptProvider === undefined ? {} : { promptProvider }),
     ...(operationalLogger === undefined ? {} : { operationalLogger })
   });
   servers.push(server);

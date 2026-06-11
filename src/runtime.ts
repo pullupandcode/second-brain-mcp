@@ -24,7 +24,8 @@ import type {
 } from "./framework/tools.js";
 import { createOcrTools, OcrJobQueue } from "./ocr/jobs.js";
 import type { OcrNotebookInput } from "./ocr/jobs.js";
-import type { ToolHandlerMap } from "./server.js";
+import { loadVaultSkills, type LoadVaultSkillsResult } from "./skills/loader.js";
+import type { PromptProvider, ToolHandlerMap } from "./server.js";
 import type { SearchResult } from "./vault/index.js";
 import type { FrontmatterValue } from "./vault/markdown.js";
 import { VaultWriteAuditStore, rotateWriteAuditIfNeeded } from "./vault/audit.js";
@@ -35,6 +36,7 @@ import { VaultWriter } from "./vault/writer.js";
 
 export interface RuntimeToolHandlers {
   handlers: ToolHandlerMap;
+  promptProvider: PromptProvider;
   close(): void;
 }
 
@@ -44,10 +46,19 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
   }
   await mkdir(config.statePath, { recursive: true });
 
+  const skillReader = new VaultReader({
+    vaultRoot: config.vaultPath,
+    ignoredGlobs: []
+  });
+  let skillLoad = await loadVaultSkills({
+    reader: skillReader,
+    mapPaths: config.skills.mapPaths
+  });
+  const effectiveBlockedPaths = buildEffectiveBlockedPaths(config, skillLoad);
   const reader = new VaultReader({
     vaultRoot: config.vaultPath,
     ignoredGlobs: [...config.index.ignoredGlobs, ...config.index.blockedPaths],
-    blockedPaths: config.security.blockedPaths
+    blockedPaths: effectiveBlockedPaths
   });
   const index = new VaultIndex({ reader, sqlitePath: config.index.sqlitePath });
   await index.rebuild();
@@ -55,7 +66,7 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
   const writer = new VaultWriter({
     vaultRoot: config.vaultPath,
     cooldownSeconds: config.writes.cooldownSeconds,
-    blockedPaths: config.security.blockedPaths,
+    blockedPaths: effectiveBlockedPaths,
     trashPath: config.deletes.trashPath
   });
   const writeAuditPath = path.join(config.statePath, "write-audit.sqlite");
@@ -86,9 +97,42 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
       index,
       writeTools
     });
+  const reloadSkills = async (): Promise<LoadVaultSkillsResult> => {
+    skillLoad = await loadVaultSkills({
+      reader: skillReader,
+      mapPaths: config.skills.mapPaths
+    });
+    replaceEffectiveBlockedPaths(effectiveBlockedPaths, config, skillLoad);
+    return skillLoad;
+  };
   const ocrTools = config.ocr.enabled ? createOcrTools(new OcrJobQueue()) : undefined;
 
   return {
+    promptProvider: {
+      listPrompts: () =>
+        skillLoad.skills.map((skill) => ({
+          name: skill.name,
+          description: skill.description
+        })),
+      getPrompt: (name) => {
+        const skill = skillLoad.skills.find((candidate) => candidate.name === name);
+        if (skill === undefined) {
+          return undefined;
+        }
+        return {
+          description: skill.description,
+          messages: [
+            {
+              role: "user",
+              content: {
+                type: "text",
+                text: skill.content
+              }
+            }
+          ]
+        };
+      }
+    },
     handlers: {
       read_note: async (arguments_) =>
         structuredResult(await readTools.read_note(requireString(arguments_, "path"))),
@@ -244,6 +288,18 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
         }),
       list_write_recovery_diagnostics: () =>
         structuredResult({ incompleteWrites: auditStore.listIncompleteWrites() }),
+      skills_list: () =>
+        structuredResult({
+          mapPaths: config.skills.mapPaths,
+          skills: skillLoad.statuses
+        }),
+      skills_reload: async () => {
+        const result = await reloadSkills();
+        return structuredResult({
+          mapPaths: config.skills.mapPaths,
+          skills: result.statuses
+        });
+      },
       framework_init: async (arguments_) => {
         const input: FrameworkInitInput = {
           framework: requireFrameworkPreset(arguments_, "framework")
@@ -307,6 +363,32 @@ export async function createRuntimeToolHandlers(config: ServerConfig): Promise<R
       auditStore.close();
     }
   };
+}
+
+function buildEffectiveBlockedPaths(
+  config: ServerConfig,
+  skillLoad: LoadVaultSkillsResult
+): string[] {
+  const paths = new Set<string>(config.security.blockedPaths);
+  for (const mapPath of config.skills.mapPaths) {
+    paths.add(mapPath);
+  }
+  for (const status of skillLoad.statuses) {
+    paths.add(status.path);
+  }
+  return [...paths];
+}
+
+function replaceEffectiveBlockedPaths(
+  effectiveBlockedPaths: string[],
+  config: ServerConfig,
+  skillLoad: LoadVaultSkillsResult
+): void {
+  effectiveBlockedPaths.splice(
+    0,
+    effectiveBlockedPaths.length,
+    ...buildEffectiveBlockedPaths(config, skillLoad)
+  );
 }
 
 function findMaps(

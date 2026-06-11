@@ -31,6 +31,8 @@ const BASE_TOOLS = [
   tool("get_vault_structure", "vault:read", "Return folder map and framework type list."),
   tool("link_to_page", "vault:read", "Return a stable OCR page wikilink."),
   tool("list_write_recovery_diagnostics", "admin", "List write attempts without terminal audit events."),
+  tool("skills_list", "admin", "List configured in-vault skill load diagnostics."),
+  tool("skills_reload", "admin", "Reload configured in-vault skills from skills maps."),
   tool("framework_init", "admin", "Create a starter framework schema."),
   tool("framework_reload", "admin", "Reload framework schema files."),
   tool("framework_register", "admin", "Register a framework overlay."),

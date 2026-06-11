@@ -5,8 +5,9 @@ import { createToolRegistry, listToolsForScopes } from "../../src/tools/registry
 
 describe("parseScopes", () => {
   test("keeps only known scopes from a space-delimited claim", () => {
-    expect([...parseScopes("vault:read daily:append unknown")]).toEqual([
+    expect([...parseScopes("vault:read skills:read daily:append unknown")]).toEqual([
       "vault:read",
+      "skills:read",
       "daily:append"
     ]);
   });
@@ -76,6 +77,10 @@ describe("tool registry", () => {
     const writeNames = listToolsForScopes(parseScopes("vault:write")).map((tool) => tool.name);
 
     expect(adminNames).toContain("list_write_recovery_diagnostics");
+    expect(adminNames).toContain("skills_list");
+    expect(adminNames).toContain("skills_reload");
     expect(writeNames).not.toContain("list_write_recovery_diagnostics");
+    expect(writeNames).not.toContain("skills_list");
+    expect(writeNames).not.toContain("skills_reload");
   });
 });
