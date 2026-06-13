@@ -138,6 +138,14 @@ blocked_paths = [
 
 `index.ignored_globs` remains supported for existing configs. Prefer `security.blocked_paths` for privacy boundaries because it also blocks writes.
 
+### What Clients See at the Boundary
+
+Vault boundaries are enforced before content is returned. A client that asks for a specific forbidden path receives an error such as `Vault path is blocked`, `Vault path must be relative`, `Vault path must not contain traversal segments`, or `Vault path resolves outside the vault root`.
+
+Discovery tools are intentionally quieter. Folder listings skip blocked or ignored children, search filters blocked rows, and link/source-ID surfaces avoid returning blocked paths. This prevents broad browsing from becoming a way to enumerate private files.
+
+Use `security.blocked_paths` for privacy and safety boundaries, especially for journals, personal context notes, AIOS/private instruction folders, credentials accidentally captured in notes, or workspaces that should not be visible to a given client.
+
 ## 3. Configure a Framework Schema
 
 The server reads the active vault framework schema from:
@@ -204,6 +212,8 @@ Use careful sourcing and preserve my note style.
 ```
 
 Valid skills are exposed as MCP prompts through `prompts/list` and `prompts/get` for clients with `skills:read`. You can put skill maps and skill files under `security.blocked_paths` to keep ordinary vault-read tools such as `read_note`, `list_folder`, and `search` from accessing them. The skill loader still reads only configured maps and their linked or path-hinted candidate skill files.
+
+Treat skill maps and skill files as sensitive. They may contain personal preferences, workflows, operating procedures, or instructions that affect how a client behaves. Grant `skills:read` only to clients that should receive those instructions.
 
 Admin-scoped diagnostics:
 
