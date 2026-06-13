@@ -30,20 +30,6 @@ This project is ready for real deployment behind HTTPS with JWT authentication a
 
 The package is currently private in `package.json`, so the supported installation path is cloning the repository and running the Node service directly.
 
-## Privacy and Security Posture
-
-`second-brain-mcp` is built for vaults that may contain private, personal, or sensitive work. The default posture is to give clients explicit capabilities, not ambient filesystem access:
-
-- All vault file access is normalized to vault-relative paths.
-- Absolute paths, `../` traversal, and symlink escapes outside the vault root are rejected.
-- `security.blocked_paths` is enforced across direct reads, folder listings, search results, link lookups, writes, and framework record creation.
-- Broad discovery tools filter blocked paths instead of revealing them.
-- Tool listing and tool calls are scope-gated; `vault:read`, `skills:read`, write, delete, capture, daily, and admin capabilities are separate.
-- In-vault skill maps and skill files are hidden from ordinary vault tools; approved skills are exposed only through MCP prompts to clients with `skills:read`.
-- Operational logs hash tool arguments by default, and write attempts are recorded in the write audit database.
-
-See [SECURITY.md](SECURITY.md) for the full security model, out-of-bounds path behavior, scope risk summary, and vulnerability reporting process.
-
 ## Requirements
 
 - Node.js `>=24.0.0`
@@ -186,7 +172,6 @@ pnpm build
 - Grant the smallest set of scopes each client needs.
 - Treat `vault:delete:hard` and `admin` as high-trust scopes.
 - Use `security.blocked_paths` for folders or patterns that should never be exposed to MCP clients.
-- Treat skill maps and skill files as sensitive instruction surfaces; grant `skills:read` only to clients that should receive them.
 - Keep raw argument logging disabled in normal operation because arguments can contain private note paths and vault text.
 
 ## License
